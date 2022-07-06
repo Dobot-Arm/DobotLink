@@ -1,0 +1,536 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DobotLinkMain</class>
+ <widget class="QMainWindow" name="DobotLinkMain">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>639</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>1200</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string notr="true">DobotLink Vx.x.x</string>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
+   <layout class="QFormLayout" name="formLayout">
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item row="0" column="0">
+     <widget class="QStackedWidget" name="stackedWidget">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="page_Monitor">
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <property name="spacing">
+         <number>6</number>
+        </property>
+        <property name="leftMargin">
+         <number>9</number>
+        </property>
+        <property name="topMargin">
+         <number>9</number>
+        </property>
+        <property name="rightMargin">
+         <number>9</number>
+        </property>
+        <property name="bottomMargin">
+         <number>9</number>
+        </property>
+        <item>
+         <widget class="QWidget" name="widget" native="true">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>23</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>30</height>
+           </size>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <property name="spacing">
+            <number>15</number>
+           </property>
+           <property name="leftMargin">
+            <number>9</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>9</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QCheckBox" name="checkBox_print">
+             <property name="text">
+              <string>Print</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="checkBox_filterJointAngle">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>filter &quot;JointAngle&quot;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="checkBox_filterGetPose">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>filter &quot;GetPose&quot;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="widget_userfilter" native="true">
+             <property name="minimumSize">
+              <size>
+               <width>150</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>170</width>
+               <height>23</height>
+              </size>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_2">
+              <property name="spacing">
+               <number>6</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QCheckBox" name="checkBox_userfilter">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>filter</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="lineEdit_userfilter">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="focusPolicy">
+                 <enum>Qt::ClickFocus</enum>
+                </property>
+                <property name="text">
+                 <string>#</string>
+                </property>
+                <property name="clearButtonEnabled">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>536</width>
+               <height>17</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btn_clearbox">
+             <property name="text">
+              <string>clear</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="monitor_Box">
+          <property name="title">
+           <string>Monitor</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_3">
+           <item>
+            <widget class="QPlainTextEdit" name="plainTextEdit_Monitor"/>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="DSerialTestForm" name="page_SerialPort"/>
+      <widget class="DMagicianTestForm" name="page_Magician"/>
+      <widget class="DfuDownloadTestForm" name="page_DfuDownload"/>
+      <widget class="QWidget" name="page_McuispDownload">
+       <widget class="QLabel" name="label">
+        <property name="geometry">
+         <rect>
+          <x>290</x>
+          <y>280</y>
+          <width>220</width>
+          <height>16</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Under construction, please detour.</string>
+        </property>
+       </widget>
+      </widget>
+      <widget class="DArduinoTestForm" name="page_Arduino"/>
+      <widget class="DMicrobitTestForm" name="page_Microbit"/>
+      <widget class="DDownloadTestForm" name="page_DownloadTest"/>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1200</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuTools">
+    <property name="title">
+     <string>Tools</string>
+    </property>
+    <addaction name="actionDeviceTest"/>
+    <addaction name="actionSerialPort"/>
+    <addaction name="actionArduinoTest"/>
+    <addaction name="actionMicrobitTest"/>
+    <addaction name="actionDfuDownload"/>
+    <addaction name="actionMCUispDownload"/>
+    <addaction name="actionDownloadTest"/>
+    <addaction name="separator"/>
+    <addaction name="actionCamera"/>
+    <addaction name="actionRemoteMonitor"/>
+   </widget>
+   <widget class="QMenu" name="menuMonitor">
+    <property name="title">
+     <string>Monitor</string>
+    </property>
+    <addaction name="actionMonitor"/>
+   </widget>
+   <widget class="QMenu" name="menuPlugins">
+    <property name="title">
+     <string>Plugins</string>
+    </property>
+    <addaction name="actionMagicDevicePlugin"/>
+    <addaction name="actionIndustrialRobotPlugin"/>
+    <addaction name="actionDownloadPlugin"/>
+    <addaction name="actionArduinoPlugin"/>
+    <addaction name="actionMicrobitPlugin"/>
+    <addaction name="separator"/>
+    <addaction name="actionPluginUpgrade"/>
+    <addaction name="separator"/>
+    <addaction name="actionDynamicAlgorithmPlugin"/>
+    <addaction name="actionDebuggerPlugin"/>
+    <addaction name="actionPyImageOMPlugin"/>
+    <addaction name="actionDebuggerlitePlugin"/>
+    <addaction name="actionRunCmdPlugin"/>
+    <addaction name="actionMagicianProJoystickPlugin"/>
+   </widget>
+   <addaction name="menuMonitor"/>
+   <addaction name="menuTools"/>
+   <addaction name="menuPlugins"/>
+  </widget>
+  <action name="actionSerialPort">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>SerialPort</string>
+   </property>
+  </action>
+  <action name="actionDeviceTest">
+   <property name="text">
+    <string>DeviceTest</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+M</string>
+   </property>
+  </action>
+  <action name="actionMicrobitTest">
+   <property name="text">
+    <string>MicrobitTest</string>
+   </property>
+  </action>
+  <action name="actionMonitor">
+   <property name="text">
+    <string>MonitorLog</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+M</string>
+   </property>
+  </action>
+  <action name="actionArduinoTest">
+   <property name="text">
+    <string>ArduinoTest</string>
+   </property>
+  </action>
+  <action name="actionMagicDevicePlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>MagicDevicePlugin</string>
+   </property>
+  </action>
+  <action name="actionArduinoPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>ArduinoPlugin</string>
+   </property>
+  </action>
+  <action name="actionMicrobitPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>MicrobitPlugin</string>
+   </property>
+  </action>
+  <action name="actionDownloadPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>DownloadPlugin</string>
+   </property>
+  </action>
+  <action name="actionPluginUpgrade">
+   <property name="text">
+    <string>PluginUpgrade</string>
+   </property>
+  </action>
+  <action name="actionCamera">
+   <property name="text">
+    <string>Camera(preview)</string>
+   </property>
+  </action>
+  <action name="actionRemoteMonitor">
+   <property name="text">
+    <string>RemoteMonitor(preview)</string>
+   </property>
+  </action>
+  <action name="actionMCUispDownload">
+   <property name="text">
+    <string>MCUispDownload</string>
+   </property>
+  </action>
+  <action name="actionDfuDownload">
+   <property name="text">
+    <string>DfuDownload</string>
+   </property>
+  </action>
+  <action name="actionDownloadTest">
+   <property name="text">
+    <string>DownloadTest</string>
+   </property>
+  </action>
+  <action name="actionIndustrialRobotPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>IndustrialRobotPlugin</string>
+   </property>
+  </action>
+  <action name="actionDynamicAlgorithmPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>DynamicAlgorithmPlugin</string>
+   </property>
+  </action>
+  <action name="actionDebuggerPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>DebuggerPlugin</string>
+   </property>
+  </action>
+  <action name="actionPyImageOMPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>PyImageOMPlugin</string>
+   </property>
+  </action>
+  <action name="actionCodingAgentPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>CodingAgentPlugin</string>
+   </property>
+  </action>
+  <action name="actionMagicianProJoystickPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>MagicianProJoystickPlugin</string>
+   </property>
+  </action>
+  <action name="actionDebuggerlitePlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>DebuggerlitePlugin</string>
+   </property>
+  </action>
+  <action name="actionRunCmdPlugin">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>RunCmdPlugin</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <customwidgets>
+  <customwidget>
+   <class>DSerialTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DSerialTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DMagicianTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DMagicianTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DMicrobitTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DMicrobitTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DArduinoTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DArduinoTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DfuDownloadTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DfuDownloadTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DDownloadTestForm</class>
+   <extends>QWidget</extends>
+   <header>Views/DDownloadTestForm.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

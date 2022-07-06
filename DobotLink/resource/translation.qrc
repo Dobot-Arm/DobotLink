@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>dobotlink.qm</file>
+        <file>dobotlink_en.qm</file>
+    </qresource>
+</RCC>

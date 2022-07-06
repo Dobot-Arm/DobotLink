@@ -1,0 +1,13 @@
+#ifndef TYPES_H
+#define TYPES_H
+
+enum DeviceType {
+    DEVICE_MAGICIAN,
+    DEVICE_MAGICIAN_LITE,
+    DEVICE_MAGICBOX,
+    DEVICE_M1,
+    DEVICE_MAGICIAN_GO,
+    DEVICE_UNKNOWN
+};
+
+#endif // TYPES_H

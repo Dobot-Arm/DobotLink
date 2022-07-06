@@ -1,0 +1,195 @@
+#ifndef DERROR_H
+#define DERROR_H
+
+#include <QObject>
+
+/**
+    | 1~99    | DobotLink 错误码                        |
+    | 100~199 | MagicDevice 错误码                      |
+    | 200~299 | Arduino/AIStarter/MobilePlatform 错误码 |
+    | 300~399 | Microbit 错误码                         |
+    | 400~499 | ProtocolFrame错误码                     |
+    | 500~599 | IndustryRobotPlugin错误码               |
+*/
+
+enum ErrorType {
+    //![-32600~-32606 特殊异常]
+    ERROR_PARSE = -32700,
+    ERROR_METHOD_NOT_FOUND = -32600,
+    ERROR_INVALID_REQUEST = -32601,
+    ERROR_INVALID_PARAMS = -32602,
+    ERROR_INVALID_PORTNAME = -32603,
+    ERROR_INVALID_COMMAND = -32604,
+    ERROR_INVALID_DEVICE = -32605,
+    ERROR_INTERNAL = -32606,
+
+    //![0 无错误]
+    NOERROR = 0,
+
+    //![1~2 DobotLink 错误码]
+    ERROR_INVALID_PLUGIN= 1,
+    ERROR_INVALID_METHOD,
+
+    //![3~16 串口错误码]
+    ERROR_SERIALPORT = 3,
+    ERROR_SERIALPORT_DEVICE_NOT_FOUND,
+    ERROR_SERIALPORT_PERMISSION,
+    ERROR_SERIALPORT_OPEN,
+    ERROR_SERIALPORT_PARITY,
+    ERROR_SERIALPORT_FRAMING,
+    ERROR_SERIALPORT_BREAK_CONDITION,
+    ERROR_SERIALPORT_WRITE,
+    ERROR_SERIALPORT_READ,
+    ERROR_SERIALPORT_RESOURCE,
+    ERROR_SERIALPORT_UNSUPPORTED_OPERATION,
+    ERROR_SERIALPORT_UNKNOW,
+    ERROR_SERIALPORT_TIMEOUT,
+    ERROR_SERIALPORT_NOT_OPENE,
+
+    //![17~99 Dobotlink 错误码]
+    ERROR_DL_API_BUSY = 17,
+    ERROR_UDP_BIND_FAILED = 18,
+    ERROR_INVALIED_FIRMWARE = 19,
+
+    //![100~199 MagicDevicePlugin 错误码]
+    ERROR_DEVICE_NOT_FOUND = 100,
+    ERROR_DEVICE_OCCUPIED,
+    ERROR_DEVICE_ALREADY_CONNECTED,
+    ERROR_DEVICE_NOT_CONNECTED,
+    ERROR_DEVICE_UNKNOWN_ERROR,
+
+    MAGIC_DEVICE_DLL_BASE = 120,
+    ERROR_DEVICE_DOWNLOAD_FAILD = MAGIC_DEVICE_DLL_BASE + 1,
+
+    ERROR_DEVICE_LOST_CONNECTION = MAGIC_DEVICE_DLL_BASE + 20,
+    ERROR_DEVICE_DISCONNECT_FALID,
+
+    ERROR_COMMUNICATION_TIMEOUT = MAGIC_DEVICE_DLL_BASE + 30,
+    ERROR_COMMUNICATION_BUFFER_FULL,
+
+    ERROR_DEVICE_ACTION_TIMEOUT = MAGIC_DEVICE_DLL_BASE + 40,
+    ERROR_DEVICE_ACTION_CANCELED,
+
+    //![170~199 Dobotlink 错误码]
+    ERROR_PACKET_JSON = 170, // json不能解析为包
+    ERROR_PACKET_RAW, // raw不能解析为包
+
+    ERROR_DOWNLOAD_FIRMWARE = 180,
+    ERROR_FIRMWARE_NOT_EXIST = ERROR_DOWNLOAD_FIRMWARE + 1,
+    ERROR_FIRMWARE_INVALID_DEVICE = ERROR_DOWNLOAD_FIRMWARE + 2,
+
+    //![200~299 ARDUINO 错误码]
+    ERROR_INVALID_ARDUINO_PROGRAM = 200,
+    ERROR_INVALID_ARDUINO_TYPE,
+    ERROR_INVALID_ARDUINO_TOOLCHAIN,
+
+    //![300~399 DEBUGGER 错误码]
+    ERROR_DEBUGGER_BASE = 300,
+    ERROR_DEBUGGERLITE_RUNNING              = ERROR_DEBUGGER_BASE + 1,
+    ERROR_DEBUGGERLITE_START_FAILED         = ERROR_DEBUGGER_BASE + 2,
+    ERROR_DEBUGGERLITE_PROCESS_INVALID      = ERROR_DEBUGGER_BASE + 3,
+    ERROR_DEBUGGERLITE_INVALID_DPID         = ERROR_DEBUGGER_BASE + 4,
+    ERROR_DEBUGGERLITE_WRITE_FAILD          = ERROR_DEBUGGER_BASE + 5,
+    ERROR_DEBUGGERLITE_SETUP_MODULE_FAILED  = ERROR_DEBUGGER_BASE + 6,
+    ERROR_DEBUGGERLITE_INVALID_PARAMS       = ERROR_DEBUGGER_BASE + 7,
+    ERROR_DEBUGGERLITE_PREPARE_FAILED       = ERROR_DEBUGGER_BASE + 8,
+    ERROR_DEBUGGERLITE_NO_PERMISSION        = ERROR_DEBUGGER_BASE + 9,
+    ERROR_DEBUGGERLITE_FILE_CANNOT_OPEN     = ERROR_DEBUGGER_BASE + 10,
+    ERROR_DEBUGGERLITE_FILE_CANNOT_WRITE    = ERROR_DEBUGGER_BASE + 11,
+
+    //![400~499 ProtocolFrame 错误码]
+    ERROR_PROTOCOLFRAME_BASE = 400,
+    ERROR_PROTOCOLFRAME_NOCONNECT = ERROR_PROTOCOLFRAME_BASE + 0,
+    ERROR_PROTOCOLFRAME_NOGENERAL,
+    ERROR_PROTOCOLFRAME_NOGO,
+    ERROR_PROTOCOLFRAME_NOCAMERA,
+    ERROR_PROTOCOLFRAME_NOBOX,
+    ERROR_PROTOCOLFRAME_TIMEOUT,
+
+    //![500~599 IndustryRobotPlugin 错误码】
+    ERROR_INDUSTRY_BASE = 500,
+
+    //![500~519 IndustryRobotPlugin 其他 错误码]
+    ERROR_INDUSTRY_DECODE_BASE64 = ERROR_INDUSTRY_BASE + 0,
+    ERROR_INDUSTRY_JSONOBJECT,
+    ERROR_INDUSTRY_MISSKEY,
+    ERROR_INDUSTRY_API,
+    ERROR_INDUSTRY_NOSAMBA,
+    ERROR_INDUSTRY_SAMBA_FAILED,
+    ERROR_INDUSTRY_FIREWALL_FAILED,
+    ERROR_INDUSTRY_NOT_CONNECTED,
+    ERROR_INDUSTRY_HAS_CONNECTED,
+    ERROR_INDUSTRY_CONNECT_TIMEOUT,
+
+    //![520~539 IndustryRobotPlugin 文件控制 错误码]
+    ERROR_INDUSTRY_FILE_NOT_EXIST = ERROR_INDUSTRY_BASE + 20,
+    ERROR_INDUSTRY_FILE_CAN_NOT_OPEN,
+    ERROR_INDUSTRY_FILE_CAN_NOT_WRITE,
+    ERROR_INDUSTRY_FILE_CAN_NOT_COPY,
+    ERROR_INDUSTRY_FILE_HAD_OPENED,
+    ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE,
+    ERROR_INDUSTRY_FOLDER_ALREADY_EXIST,
+    ERROR_INDUSTRY_FOLDER_NOT_EXIST,
+    ERROR_INDUSTRY_FOLDER_HAD_OPENED,
+    ERROR_INDUSTRY_FOLDER_CAN_NOT_RENAME,
+    ERROR_INDUSTRY_FOLDER_CAN_NOT_ENTER,
+    ERROR_INDUSTRY_FOLDER_CAN_NOT_REMOVE,
+    ERROR_INDUSTRY_FILE_TIMEOUT,
+
+    //![540~549 IndustryRobotPlugin Mobdebug 错误码]
+    ERROR_MOBDEBUG_START_FAILED = ERROR_INDUSTRY_BASE + 40,
+    ERROR_MOBDEBUG_CLIENT_TIMEOUT,
+    ERROR_MOBDEBUG_TCP_BIND_FAILED,
+    ERROR_MOBDEBUG_UDP_BIND_FAILED,
+    ERROR_MOBDEBUG_PROCESS_CRASHED,
+    ERROR_MOBDEBUG_STOP_FAILED,
+    ERROR_MOBDEBUG_PROCESS_NOT_RUNNING,
+
+    //![1000~1999 HTTP CURL错误码]
+    ERROR_HTTP_CURL = 1000,
+
+    //![2000~2999 HTTP QT错误码]
+    ERROR_HTTP_QT_TIMEOUT = 2000,
+    ERROR_HTTP_QT = 2001,
+
+    ERROR_NUKNOWN_ERROR,
+};
+
+class DError
+{
+public:
+    static QString getErrorMessage(int code);
+};
+
+/*
+
+|  180  | caution: Magician device disconnected. |
+
+|  182  | Magician Mathod is invalid.            |
+
+|  201  | ArduinoProgram's data is empty.        |
+|  202  | Arduino Type error. type:xxx           |
+|  203  | serial port is empty.                  |
+|  204  | Open code file Failed. filePath:xxx    |
+|  205  | ArduinoProgram is buzy.                |
+|  206  | error, timeout.                        |
+|  207  | error, please read log.                |
+
+|  210  | Arduino-tools not found.               |
+|  211  | code.cpp file is not exist.            |
+|  212  | compile process crash.                 |
+|  213  | avr-g++ compile Error.                 |
+|  214  | avr-gcc compile Error.                 |
+|  215  | avr-objcopy compile Error.             |
+
+|  220  | out.hex file is not exist.             |
+|  221  | no available device.                   |
+|  222  | Do not specify Arduino Type.           |
+|  223  | upload process crash.                  |
+|  224  | upload process timeout.                |
+|  225  | unknown error, please read log.        |
+
+
+*/
+
+#endif // DERROR_H

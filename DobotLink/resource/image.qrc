@@ -1,0 +1,34 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/Dobot180_200.png</file>
+        <file>images/DobotIcon.ico</file>
+        <file>images/dobotlinklogo.png</file>
+        <file>images/DobotLinkIcon.ico</file>
+        <file>images/grip/grip_left_hover.png</file>
+        <file>images/grip/grip_left_normal.png</file>
+        <file>images/grip/grip_left_pressed.png</file>
+        <file>images/grip/grip_right_hover.png</file>
+        <file>images/grip/grip_right_normal.png</file>
+        <file>images/grip/grip_right_pressed.png</file>
+        <file>images/home/home_normal.png</file>
+        <file>images/home/home_hover.png</file>
+        <file>images/home/home_pressed.png</file>
+        <file>images/panel/panel_hover.png</file>
+        <file>images/panel/panel_hover_J.png</file>
+        <file>images/panel/panel_normal.png</file>
+        <file>images/panel/panel_normal_J.png</file>
+        <file>images/panel/panel_pressed.png</file>
+        <file>images/panel/panel_pressed_J.png</file>
+        <file>images/panel/mask_down.png</file>
+        <file>images/panel/mask_down2.png</file>
+        <file>images/panel/mask_left.png</file>
+        <file>images/panel/mask_right.png</file>
+        <file>images/panel/mask_up.png</file>
+        <file>images/panel/mask_up2.png</file>
+        <file>images/grip/grip_left_disabled.png</file>
+        <file>images/grip/grip_right_disabled.png</file>
+        <file>images/home/home_disabled.png</file>
+        <file>images/panel/panel_disabled.png</file>
+        <file>images/panel/panel_disabled_J.png</file>
+    </qresource>
+</RCC>

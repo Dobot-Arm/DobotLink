@@ -1,0 +1,67 @@
+/**
+ ***********************************************************************************************************************
+ *
+ * @author  ZhangRan
+ * @version 1.0.0
+ *
+ * <h2><center>&copy; COPYRIGHT 2022 </center></h2>
+ *
+ ***********************************************************************************************************************
+ */
+
+#ifndef SIMULATION_MAGICIANLITE_SRC_RUNTIME_DCPS_CMD_ID_H_
+#define SIMULATION_MAGICIANLITE_SRC_RUNTIME_DCPS_CMD_ID_H_
+
+enum CmdID
+{
+    CMD_ID_GET_PRODUCT_NAME = 7,
+    CMD_ID_GET_POSE = 10,
+    CMD_ID_POS_CHECK_LIMIT = 15,
+
+    CMD_ID_ALARM_STATUS = 20,
+
+    CMD_ID_HOME_PARAM = 30,
+    CMD_ID_HOME,
+
+    // End effector
+    CMD_ID_END_EFFECTOR_PARAM = 60,
+    CMD_ID_END_EFFECTOR_LASER,
+    CMD_ID_END_EFFECTOR_SUCTION_CUP,
+    CMD_ID_END_EFFECTOR_GRIPPER,
+    CMD_ID_END_EFFECTOR_TYPE,
+
+    CMD_ID_ROBOT_SERVO_ANGLE = 65,
+    CMD_ID_ROBOT_VEL_RATIO = 66,
+    CMD_ID_ROBOT_LSPEED_RATIO = 67,
+    CMD_ID_ROBOT_CFG_AND_STATUS,
+    CMD_ID_ROBOT_RT_STATUS,
+
+    CMD_ID_GET_JOG_JOINT_PARAMS = 70,
+    CMD_ID_GET_JOG_COORDINATE_PARAMS = 71,
+    CMD_ID_GET_JOG_COMMON_PARAMS = 72,
+    CMD_ID_GET_JOG_CMD,
+    CMD_ID_GET_JOGL_CMD,
+
+    CMD_ID_PTP_JOINT_PARAMS = 80,
+    CMD_ID_PTP_COORDINATE_PARAM,
+    CMD_ID_PTP_JUMP_PARAMS,
+    CMD_ID_PTP_COMMON_PARAMS,
+    CMD_ID_PTP,
+
+    CMD_ID_SET_WAIT_CMD = 110,
+
+    CMD_ID_SET_LOST_STEP_VALUE = 170,
+    CMD_ID_SET_LOST_STEP_CMD = 171,
+    CMD_ID_COLLISION_CHECK = 172,
+
+    CMD_ID_START_QUEUE = 240,
+    CMD_ID_QUEUE_STOP,
+    CMD_ID_QUEUE_FORCE_STOP,
+    CMD_ID_QUEUE_START_DOWNLOAD,
+    CMD_ID_QUEUE_STOP_DOWNLOAD,
+    CMD_ID_QUEUE_CLEAR,
+    CMD_ID_QUEUE_GET_INDEX,
+    CMD_ID_QUEUE_GET_LEFT_SPACE,
+};
+
+#endif    // SIMULATION_MAGICIANLITE_SRC_RUNTIME_DCPS_CMD_ID_H_
