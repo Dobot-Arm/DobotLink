@@ -14,6 +14,7 @@ const QString DefaultIPAddress = "192.168.1.6";
 const QString DefaultIPAddress = "192.168.2.6";
 #endif
 
+QMap<QString,int> Device::m_portFCSmb;
 Device::Device(QObject *parent) : QObject(parent)
 {
     m_isConnected = false;
@@ -94,8 +95,6 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
 #endif
     }
 
-    m_module->sendGetRequest("/connection/state", id, "ConnectDobot");
-
     QObject* pErr = new QObject();
     connect(m_module, &Module::onErrorOccured_signal,pErr,
             [this,id,pErr](quint64 reqId, int errCode, QString errStr) {
@@ -137,7 +136,7 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
 
 #ifdef USE_MOBDEBUG
         // 绑定端口
-        if (!m_modebug->udpOpen()) {
+        if (!m_modebug->udpOpen(portName)) {
             m_module->setIpAddress("");
             emit onErrorOccured_signal(id, ERROR_MOBDEBUG_UDP_BIND_FAILED);
             return;
@@ -158,11 +157,18 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
         {
             if (m_portFCSmb.contains(strPortNameTmp))
             {
-                m_fileControll = m_portFCSmb[strPortNameTmp];
+                if (m_portFCSmb[strPortNameTmp] == SMBType::SMBT_V2_SMB)
+                {
+                    m_fileControll = m_pFileCtrlSmb;
+                }
+                else
+                {
+                    m_fileControll = m_pFileCtrl;
+                }
             }
             else
             {
-                m_fileControll = m_pFileCtrlSmb;
+                m_fileControll = m_pFileCtrl;
             }
             m_pFileCtrl->setIpAddress(strPortNameTmp);
             m_pFileCtrlSmb->setIpAddress(strPortNameTmp);
@@ -171,6 +177,8 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
         m_isConnected = true;
         emit onReplyMessage_signal(id, true);
     });
+
+    m_module->sendGetRequest("/connection/state", id, "ConnectDobot");
 }
 
 void Device::pDisconnectDobot(quint64 id, QJsonObject params)
@@ -581,6 +589,10 @@ void Device::_apiFunctionInit()
 
     m_FuncMap.insert("SetIONote", &Device::pSetIONote);
     m_FuncMap.insert("GetIONote", &Device::pGetIONote);
+
+    m_FuncMap.insert("GetCabinetType", &Device::pGetCabinetType);
+    m_FuncMap.insert("GetCCBoxVoltage", &Device::pGetCCBoxVoltage);
+    m_FuncMap.insert("SetCCBoxVoltage", &Device::pSetCCBoxVoltage);
 }
 
 void Device::_selfExchangeFunMapInit()
@@ -1903,7 +1915,7 @@ void Device::pSetDebuggerStop(quint64 id, QJsonObject params)
     if (isMobdebug) {
         // It will take quite a while to stop the mobdebug process.
         // So, send stop cmd before process stop.
-        m_module->sendPostRequest("/debugger/stop", params, id, "SetPrivateDebuggerStop");
+        m_module->sendPostRequest("/debugger/stop", QJsonObject(), id, "SetPrivateDebuggerStop");
 
         // todo: bad idea, firmware have a bug.
         QObject *obj = new QObject(this);
@@ -1917,7 +1929,7 @@ void Device::pSetDebuggerStop(quint64 id, QJsonObject params)
             }
         });
     } else {
-        m_module->sendPostRequest("/debugger/stop", params, id, "SetDebuggerStop");
+        m_module->sendPostRequest("/debugger/stop", QJsonObject(), id, "SetDebuggerStop");
     }
 
 }
@@ -3071,23 +3083,53 @@ void Device::pSetModbusctrl(quint64 id, QJsonObject params)
 
 void Device::pAddSearchIP(quint64 id, QJsonObject params)
 {
-    if (params.isEmpty() || !params.contains("ip") || !params["ip"].isString())
+    if (params.isEmpty() || !params.contains("data") || !params["data"].isArray())
     {
-        m_module->SetSearchIP("");
+        m_module->SetSearchIP(QStringList());
         emit onReplyMessage_signal(id, true);
         return ;
     }
-    QString strIp = params["ip"].toString();
-    QRegExp reg("^((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)$");
-    if (strIp.isEmpty() || reg.exactMatch(strIp))
+    QStringList lstNewIp;
+    QJsonArray arrIp = params["data"].toArray();
+    for(auto itr = arrIp.begin(); itr != arrIp.end(); ++itr)
     {
-        m_module->SetSearchIP(strIp);
-        emit onReplyMessage_signal(id, true);
+        if (!itr->isObject())
+        {
+            continue;
+        }
+        QJsonObject obj = itr->toObject();
+        if (obj.contains("ip") && obj["ip"].isString())
+        {
+            QString strNewIp = obj["ip"].toString();
+
+            QRegExp reg("^((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)$");
+            if (strNewIp.isEmpty() || reg.exactMatch(strNewIp))
+            {
+                lstNewIp << strNewIp;
+            }
+        }
     }
-    else
-    {
-        emit onReplyMessage_signal(id, false);
-    }
+
+    m_module->SetSearchIP(lstNewIp);
+    emit onReplyMessage_signal(id, true);
+}
+
+void Device::pGetCabinetType(quint64 id, QJsonObject params)
+{
+    Q_UNUSED(params)
+    m_module->sendGetRequest("/properties/cabinetType", id, "GetCabinetType");
+}
+
+void Device::pGetCCBoxVoltage(quint64 id, QJsonObject params)
+{
+    Q_UNUSED(params)
+    m_module->sendGetRequest("/settings/function/ccboxVoltage", id, "GetCCBoxVoltage");
+}
+
+void Device::pSetCCBoxVoltage(quint64 id, QJsonObject params)
+{
+    QJsonValue dataObj = params.value("data");
+    m_module->sendPostRequest("/settings/function/ccboxVoltage", dataObj, id, "SetCCBoxVoltage");
 }
 
 void Device::pGetFunctionRemoteControl(quint64 id, QJsonObject params)
@@ -3986,7 +4028,7 @@ void Device::pGetDragTeachFileList(quint64 id, QJsonObject params)
     Q_UNUSED(params)
     QObject *obj = new QObject(this);
     m_fileControll->getFullFileNameList(id, "/project/process/trajectory/", QStringList("*.json"));
-    connect(m_fileControll, &FileControll::signalFinishedGetFileListResult, obj, [=](quint64 c_id, int code, QStringList fileList){
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray array, QJsonValue value){
         if (id != c_id)
         {
             return ;
@@ -3997,12 +4039,7 @@ void Device::pGetDragTeachFileList(quint64 id, QJsonObject params)
             obj->deleteLater();
             if (code == NOERROR)
             {
-                QJsonArray arr;
-                foreach(const auto& file, fileList)
-                {
-                    arr.append(file);
-                }
-                emit onReplyMessage_signal(id, arr);
+                emit onReplyMessage_signal(id, value);
             }
             else
             {
@@ -4498,14 +4535,7 @@ void Device::onSearch_slot(QJsonArray res, quint64 id)
         int smbType = json.value("smbType").toInt(1);
         QString portName = json.value("portName").toString();
 
-        if (SMBType::SMBT_FILE_SMB == smbType)
-        {
-            m_portFCSmb.insert(portName, m_pFileCtrl);
-        }
-        else if (SMBType::SMBT_V2_SMB == smbType)
-        {
-            m_portFCSmb.insert(portName, m_pFileCtrlSmb);
-        }
+        m_portFCSmb.insert(portName, smbType);
     }
 
     emit onReplyMessage_signal(id, _res);

@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QTime>
 #include <QtConcurrent>
+#include <QSet>
 #ifdef Q_OS_ANDROID
 #include <moblistenworker.h>
 #include <printerlistenworker.h>
@@ -14,6 +15,16 @@
 #define MOBDEBUG_START_TIMEOUT 5000
 #define MOBDEBUG_PROCESS_START_TIMEOUT 100
 #define MOBDEBUG_SERVE_DELDAY 100
+
+
+//一个DobotLink控制多台设备时，udp绑定的端口是固定的，所以这几个变量要共享
+static QUdpSocket *g_pUdpPrint = nullptr;
+static QUdpSocket *g_pUdp1Cursor = nullptr;
+static QUdpSocket *g_pUdp2Cursor = nullptr;
+static QUdpSocket *g_pUdpSpecial = nullptr;
+static QUdpSocket *g_pUdpBlockHighlight = nullptr;
+
+static QSet<Mobdebug*> g_AllMobdebug;
 
 Mobdebug::Mobdebug(QObject *parent) : QObject(parent)
 {
@@ -62,6 +73,11 @@ Mobdebug::Mobdebug(QObject *parent) : QObject(parent)
             p->deleteLater();
         });
     }
+}
+
+Mobdebug::~Mobdebug()
+{
+    udpClose();
 }
 
 void Mobdebug::_processInit()
@@ -139,27 +155,40 @@ void Mobdebug::_processInit()
 
 void Mobdebug::_udpInit()
 {
-    udpPrint = new QUdpSocket(this);
-    udpPrint->setProperty("id", "ClientMsg");
-    connect(udpPrint, &QUdpSocket::readyRead, this, &Mobdebug::readPendingClientMsg_slot);
+    if (!g_pUdpPrint)
+    {
+        g_pUdpPrint = new QUdpSocket();
+        g_pUdpPrint->setProperty("id", "ClientMsg");
+        connect(g_pUdpPrint, &QUdpSocket::readyRead, &Mobdebug::readPendingClientMsg_slot);
+    }
 
-    udp1Cursor = new QUdpSocket(this);
-    udp1Cursor->setProperty("id", "1stCursorMsg");
-    connect(udp1Cursor, &QUdpSocket::readyRead, this, &Mobdebug::readPending1stCursorMsg_slot);
+    if (!g_pUdp1Cursor)
+    {
+        g_pUdp1Cursor = new QUdpSocket(this);
+        g_pUdp1Cursor->setProperty("id", "1stCursorMsg");
+        connect(g_pUdp1Cursor, &QUdpSocket::readyRead, &Mobdebug::readPending1stCursorMsg_slot);
+    }
 
-    udp2Cursor = new QUdpSocket(this);
-    udp2Cursor->setProperty("id", "2ndCursorMsg");
-    connect(udp2Cursor, &QUdpSocket::readyRead, this, &Mobdebug::readPending2ndCursorMsg_slot);
+    if (!g_pUdp2Cursor)
+    {
+        g_pUdp2Cursor = new QUdpSocket(this);
+        g_pUdp2Cursor->setProperty("id", "2ndCursorMsg");
+        connect(g_pUdp2Cursor, &QUdpSocket::readyRead, &Mobdebug::readPending2ndCursorMsg_slot);
+    }
 
-    udpSpecial = new QUdpSocket(this);
-    udpSpecial->setProperty("id", "SpecialMsg");
-    connect(udpSpecial, &QUdpSocket::readyRead, this, &Mobdebug::readPendingSpecialMsg_slot);
+    if (!g_pUdpSpecial)
+    {
+        g_pUdpSpecial = new QUdpSocket(this);
+        g_pUdpSpecial->setProperty("id", "SpecialMsg");
+        connect(g_pUdpSpecial, &QUdpSocket::readyRead, &Mobdebug::readPendingSpecialMsg_slot);
+    }
 
-    udpBlockHighlight = new QUdpSocket(this);
-    udpBlockHighlight->setProperty("id", "BlockHighlightId");
-    connect(udpBlockHighlight, &QUdpSocket::readyRead, this, &Mobdebug::readBlockHighlightId_slot);
-
-
+    if (!g_pUdpBlockHighlight)
+    {
+        g_pUdpBlockHighlight = new QUdpSocket(this);
+        g_pUdpBlockHighlight->setProperty("id", "BlockHighlightId");
+        connect(g_pUdpBlockHighlight, &QUdpSocket::readyRead, &Mobdebug::readBlockHighlightId_slot);
+    }
 }
 
 bool Mobdebug::start(quint64 id)
@@ -205,100 +234,125 @@ bool Mobdebug::start(quint64 id)
 #endif
 }
 
-bool Mobdebug::udpOpen()
+bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
 {
-    if (!udpPrint->isOpen()) {
+    bool bOk = false;
+
+    if (QUdpSocket::SocketState::BoundState != g_pUdpPrint->state())
+    {
 #ifdef __arm__
-        if (udpPrint->bind(QHostAddress::Any, 5000)) {
+        if (g_pUdpPrint->bind(QHostAddress::Any, 5000)) {
 #else
-        if (udpPrint->bind(5000)) {
+        if (g_pUdpPrint->bind(5000)) {
 #endif
             qDebug() << "bind 5000 sucess.";
         } else {
             qDebug() << "bind 5000 failed.";
-            return false;
+            goto exit_flag;
         }
     }
-    if (!udp1Cursor->isOpen()) {
+
+    if (QUdpSocket::SocketState::BoundState != g_pUdp1Cursor->state()) {
 #ifdef __arm__
-        if (udp1Cursor->bind(QHostAddress::Any, 5001)) {
+        if (g_pUdp1Cursor->bind(QHostAddress::Any, 5001)) {
 #else
-        if (udp1Cursor->bind(5001)) {
+        if (g_pUdp1Cursor->bind(5001)) {
 #endif
             qDebug() << "bind 5001 sucess.";
         } else {
             qDebug() << "bind 5001 failed.";
-
-            //关闭已经打开的udp，否则下次连接肯定失败
-            udpPrint->abort();
-
-            return false;
+            goto exit_flag;
         }
     }
-    if (!udp2Cursor->isOpen()) {
+
+    if (QUdpSocket::SocketState::BoundState != g_pUdp2Cursor->state()) {
 #ifdef __arm__
-        if (udp2Cursor->bind(QHostAddress::Any, 5002)) {
+        if (g_pUdp2Cursor->bind(QHostAddress::Any, 5002)) {
 #else
-        if (udp2Cursor->bind(5002)) {
+        if (g_pUdp2Cursor->bind(5002)) {
 #endif
             qDebug() << "bind 5002 sucess.";
         } else {
             qDebug() << "bind 5002 failed.";
-
-            //关闭已经打开的udp，否则下次连接肯定失败
-            udpPrint->abort();
-            udp1Cursor->abort();
-
-            return false;
+            goto exit_flag;
         }
     }
-    if (!udpSpecial->isOpen()) {
+
+    if (QUdpSocket::SocketState::BoundState != g_pUdpSpecial->state()) {
 #ifdef __arm__
-        if (udpSpecial->bind(QHostAddress::Any, 5003)) {
+        if (g_pUdpSpecial->bind(QHostAddress::Any, 5003)) {
 #else
-        if (udpSpecial->bind(5003)) {
+        if (g_pUdpSpecial->bind(5003)) {
 #endif
             qDebug() << "bind 5003 sucess.";
         } else {
             qDebug() << "bind 5003 failed.";
-
-            //关闭已经打开的udp，否则下次连接肯定失败
-            udpPrint->abort();
-            udp1Cursor->abort();
-            udp2Cursor->abort();
-
-            return false;
+            goto exit_flag;
         }
     }
-    if (!udpBlockHighlight->isOpen()) {
+
+    if (QUdpSocket::SocketState::BoundState != g_pUdpBlockHighlight->state()) {
 #ifdef __arm__
-        if (udpBlockHighlight->bind(QHostAddress::Any, 5004)) {
+        if (g_pUdpBlockHighlight->bind(QHostAddress::Any, 5004)) {
 #else
-        if (udpBlockHighlight->bind(5004)) {
+        if (g_pUdpBlockHighlight->bind(5004)) {
 #endif
             qDebug() << "bind 5004 sucess.";
         } else {
             qDebug() << "bind 5004 failed.";
-
-            //关闭已经打开的udp，否则下次连接肯定失败
-            udpPrint->abort();
-            udp1Cursor->abort();
-            udp2Cursor->abort();
-            udpSpecial->abort();
-
-            return false;
+            goto exit_flag;
         }
     }
-    return true;
+    bOk = true;
+
+exit_flag:
+    if (!bOk)
+    {//其中某一个打开失败了，则全都关闭
+        if (QUdpSocket::SocketState::BoundState == g_pUdpPrint->state())
+        {
+            g_pUdpPrint->abort();
+        }
+        if (QUdpSocket::SocketState::BoundState == g_pUdp1Cursor->state())
+        {
+            g_pUdp1Cursor->abort();
+        }
+        if (QUdpSocket::SocketState::BoundState == g_pUdp2Cursor->state())
+        {
+            g_pUdp2Cursor->abort();
+        }
+        if (QUdpSocket::SocketState::BoundState == g_pUdpSpecial->state())
+        {
+            g_pUdpSpecial->abort();
+        }
+        if (QUdpSocket::SocketState::BoundState == g_pUdpBlockHighlight->state())
+        {
+            g_pUdpBlockHighlight->abort();
+        }
+    }
+    else
+    {
+        m_strDeviceIpAddress = strDeviceIpAddress;
+        g_AllMobdebug.insert(this);
+    }
+
+    //1. 成功打开了所有udp后，就需要将 this保存起来，当closeudp时，就要删掉this，当所有this都删完了，就真的关掉所有udp
+    //2. udp收到消息时，要判断ip是否为 m_strDeviceIpAddress，如果是，则消息发出去，否则消息不发，不然就出现消息串台了。
+    return bOk;
 }
 
 void Mobdebug::udpClose()
 {
-    udpPrint->abort();
-    udp1Cursor->abort();
-    udp2Cursor->abort();
-    udpSpecial->abort();
-    udpBlockHighlight->abort();
+    g_AllMobdebug.remove(this);
+    if (g_AllMobdebug.isEmpty())
+    {
+        g_pUdpPrint->abort();
+        g_pUdp1Cursor->abort();
+        g_pUdp2Cursor->abort();
+        g_pUdpSpecial->abort();
+        g_pUdpBlockHighlight->abort();
+    }
+
+    m_strDeviceIpAddress = "";
 }
 
 void Mobdebug::mo_run(quint64 id)
@@ -575,21 +629,29 @@ void Mobdebug::onProcessStateChanged(QProcess::ProcessState newState)
 //![udp slot]
 void Mobdebug::readPendingClientMsg_slot()
 {
-    QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
+    QUdpSocket *socket = g_pUdpPrint;
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QHostAddress host = datagram.destinationAddress();
             QString message = datagram.data();
+            QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
+            quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
-            qDebug() << "[udp]"<< socket->localPort() << ": " << message;
+            qDebug() << "[udp]"<< iPort << ": " << message;
             // 过滤
 #ifdef __arm__
             if (host.toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
                 emit readPendingClientMsg_signal(socket->localPort(), message);
             }
 #else
-            emit readPendingClientMsg_signal(socket->localPort(), message);
+            QString strIp = host.toString();
+            foreach(Mobdebug* pDebug, g_AllMobdebug)
+            {
+                if (strIp == pDebug->m_strDeviceIpAddress)
+                {
+                    emit pDebug->readPendingClientMsg_signal(socket->localPort(), message);
+                }
+            }
 #endif
         }
 
@@ -598,21 +660,29 @@ void Mobdebug::readPendingClientMsg_slot()
 
 void Mobdebug::readPending1stCursorMsg_slot()
 {
-    QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
+    QUdpSocket *socket = g_pUdp1Cursor;
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QHostAddress host = datagram.destinationAddress();
             QString message = datagram.data();
+            QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
+            quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
-            qDebug() << "[udp]"<< socket->localPort() << ": " << message;
+            qDebug() << "[udp]"<< iPort << ": " << message;
             // 过滤
 #ifdef __arm__
             if (host.toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
                 emit readPending1stCursorMsg_signal(socket->localPort(), message);
             }
 #else
-            emit readPending1stCursorMsg_signal(socket->localPort(), message);
+            QString strIp = host.toString();
+            foreach(Mobdebug* pDebug, g_AllMobdebug)
+            {
+                if (strIp == pDebug->m_strDeviceIpAddress)
+                {
+                    emit pDebug->readPending1stCursorMsg_signal(socket->localPort(), message);
+                }
+            }
 #endif
         }
     }
@@ -620,21 +690,29 @@ void Mobdebug::readPending1stCursorMsg_slot()
 
 void Mobdebug::readPending2ndCursorMsg_slot()
 {
-    QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
+    QUdpSocket *socket = g_pUdp2Cursor;
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QHostAddress host = datagram.destinationAddress();
             QString message = datagram.data();
+            QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
+            quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
-            qDebug() << "[udp]"<< socket->localPort() << ": " << message;
+            qDebug() << "[udp]"<< iPort << ": " << message;
             // 过滤
 #ifdef __arm__
             if (host.toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
                 emit readPending2ndCursorMsg_signal(socket->localPort(), message);
             }
 #else
-            emit readPending2ndCursorMsg_signal(socket->localPort(), message);
+            QString strIp = host.toString();
+            foreach(Mobdebug* pDebug, g_AllMobdebug)
+            {
+                if (strIp == pDebug->m_strDeviceIpAddress)
+                {
+                    emit pDebug->readPending2ndCursorMsg_signal(socket->localPort(), message);
+                }
+            }
 #endif
         }
     }
@@ -642,21 +720,29 @@ void Mobdebug::readPending2ndCursorMsg_slot()
 
 void Mobdebug::readPendingSpecialMsg_slot()
 {
-    QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
+    QUdpSocket *socket = g_pUdpSpecial;
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QHostAddress host = datagram.destinationAddress();
             QString message = datagram.data();
+            QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
+            quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
-            qDebug() << "[udp]"<< socket->localPort() << ": " << message;
+            qDebug() << "[udp]"<< iPort << ": " << message;
             // 过滤
 #ifdef __arm__
             if (host.toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
                 emit readPendingSpecialMsg_signal(socket->localPort(), message);
             }
 #else
-            emit readPendingSpecialMsg_signal(socket->localPort(), message);
+            QString strIp = host.toString();
+            foreach(Mobdebug* pDebug, g_AllMobdebug)
+            {
+                if (strIp == pDebug->m_strDeviceIpAddress)
+                {
+                    emit pDebug->readPendingSpecialMsg_signal(socket->localPort(), message);
+                }
+            }
 #endif
         }
     }
@@ -664,21 +750,29 @@ void Mobdebug::readPendingSpecialMsg_slot()
 
 void Mobdebug::readBlockHighlightId_slot()
 {
-    QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
+    QUdpSocket *socket = g_pUdpBlockHighlight;
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QHostAddress host = datagram.destinationAddress();
             QString message = datagram.data();
+            QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
+            quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
-            qDebug() << "[udp]"<< socket->localPort() << ": " << message;
+            qDebug() << "[udp]"<< iPort << ": " << message;
             // 过滤
 #ifdef __arm__
-            if (host.toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
+            if (datagram.destinationAddress().toString() == QHostAddress("::ffff:192.168.1.255%8").toString()){
                 emit readBlockHighlightId_signal(socket->localPort(), message);
             }
 #else
-            emit readBlockHighlightId_signal(socket->localPort(), message);
+            QString strIp = host.toString();
+            foreach(Mobdebug* pDebug, g_AllMobdebug)
+            {
+                if (strIp == pDebug->m_strDeviceIpAddress)
+                {
+                    emit pDebug->readBlockHighlightId_signal(socket->localPort(), message);
+                }
+            }
 #endif
         }
     }

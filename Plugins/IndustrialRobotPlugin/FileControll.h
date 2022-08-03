@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QThreadPool>
 #include "IOThread.h"
+#include "cmythreadpool.h"
 class FileControll : public QObject
 {
     Q_OBJECT
@@ -15,12 +16,12 @@ public:
     FileControll(const QString &ip, QObject *parent = nullptr);
     ~FileControll();
 
-    void setIpAddress(const QString &ip);
+    virtual void setIpAddress(const QString &ip);
     QString getIpAddress() const{return m_ip;}
 
     /* file */
     virtual void readFile(const quint64 id, const QString &fileName, quint32 timeout=0);
-    virtual void readFolder(const quint64 id, const QString &folderName);
+    virtual void readFolder(const quint64 id, const QString &folderName, quint32 timeout=0);
     virtual void writeFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout=0);
     virtual void writeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0);
     virtual void newFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0);
@@ -49,20 +50,12 @@ public:
 
 protected:
     QString m_ip;
-    QThreadPool m_pool;
+    static CMyThreadPool* m_pool;
 
     inline void closureHandler(BaseThread *_thread, quint64 id, quint32 timeout);
 
 signals:
     void onFinish_signal(quint64 id, int code, QByteArray array, QJsonValue value);
-
-    /*
-    *功能：返回文件列表
-    *参数：id-请求的标识id
-    *     code-错误标识，0-标识没有错误
-    *     fileList-返回文件列表，相对路径。eg: /project/properties/default.json
-    */
-    void signalFinishedGetFileListResult(quint64 id, int code, QStringList fileList);
 };
 
 #endif // FILECONTROLL_H

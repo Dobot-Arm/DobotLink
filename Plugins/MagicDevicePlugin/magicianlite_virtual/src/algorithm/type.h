@@ -129,6 +129,17 @@ typedef struct {
     float z;                                                // 位置Z,mm
     float r;                                                // 姿态A,deg
 } TCPosition;
+
+// pos & pose
+typedef struct {
+    double x;
+    double y;
+    double z;
+    double a;
+    double b;
+    double c;
+} WCSPosition;
+
 typedef struct VECTOR3D_STR
 {
     float item01;
@@ -307,6 +318,13 @@ typedef struct tagPose {
     float jointAngle[ROBOT_AXIS];
 } Pose;
 
+typedef struct tagDHParams {
+    float theta_min[5];
+    float theta_max[5];
+    float DH[4];
+    float Z_Limit[2];
+} DHParams;
+
 /*
  * Kinematics
  */
@@ -415,6 +433,12 @@ typedef struct tagPTPJumpParams {
     float maxJumpHeight;
 } PTPJumpParams;
 
+typedef struct tagPTPJump2Params {
+    float startJumpHeight;
+    float endJumpHeight;
+    float zLimit;
+} PTPJump2Params;
+
 typedef struct tagPTPCommonParams {
     float velocityRatio;
     float accelerationRatio;
@@ -424,6 +448,7 @@ typedef struct tagPTPParams {
     PTPJointParams jointParams;
     PTPCoordinateParams coordinateParams;
     PTPJumpParams jumpParams;
+    PTPJump2Params jump2Params;
     PTPCommonParams commonParams;
 } PTPParams;
 
@@ -526,6 +551,22 @@ typedef struct tagARCCmd {
     } toPoint;
 } ARCCmd;
 
+typedef struct tagCircleCmd {
+    struct {
+        float x;
+        float y;
+        float z;
+        float rHead;
+    } cirPoint;
+    struct {
+        float x;
+        float y;
+        float z;
+        float rHead;
+    } toPoint;
+    uint32_t count;
+} CircleCmd;
+
 /*********************************************************************************************************
 ** WAIT cmd
 *********************************************************************************************************/
@@ -613,6 +654,7 @@ typedef struct tagSysParams {
     // Pose
     Pose pose;
     Kinematics kinematics;
+    DHParams dhParams;
 
     // Alarm
 
@@ -651,6 +693,8 @@ typedef struct tagSysParams {
     struct {
         CPParams params;
         CPCmd cmd;
+        bool rHeadHoldEnable;
+        float rHeadValue;
     } cp;
 
     // ARC
@@ -658,6 +702,7 @@ typedef struct tagSysParams {
         ARCParams params;
         ARCCmd cmd;
     } arc;
+    CircleCmd circleCmd;
 
     // WAIT
     struct {
@@ -677,10 +722,11 @@ typedef struct tagSysParams {
     float CollisionCheckValue;
 
     // CAL
+    float RotAngleError;
     float rearArmAngleError;
-    float rearArmAngleCoef;
     float frontArmAngleError;
-    float frontArmAngleCoef;
+    float rearLinkError;
+    float frontLinkError;
     float AngleError[2];
     float AngleCoef[2];
     float RotErr[1];

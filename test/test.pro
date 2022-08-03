@@ -22,10 +22,12 @@ $$PWD/../DobotLink \
 $$PWD/../Plugins/IndustrialRobotPlugin \
 
 SOURCES += \
+$$PWD/../Plugins/IndustrialRobotPlugin/cmythreadpool.cpp \
 $$PWD/../Plugins/IndustrialRobotPlugin/IOThread.cpp \
 $$PWD/../Plugins/IndustrialRobotPlugin/FileControll.cpp \
 
 HEADERS += \
+$$PWD/../Plugins/IndustrialRobotPlugin/cmythreadpool.h \
 $$PWD/../Plugins/IndustrialRobotPlugin/IOThread.h \
 $$PWD/../Plugins/IndustrialRobotPlugin/FileControll.h \
     test_industrialrobot_filecontroll.h \

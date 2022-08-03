@@ -125,7 +125,7 @@ void MagicDevicePlugin::_handleMagicDeviceCommand(const QJsonObject &obj)
                         } else if (_checkQueueApi(packet.api)) {
                             ok = _handleQueueCmd(device, packet);
                         }  else {
-                            ok = _pSendCommand(device, packet);
+                            ok = SendCommandInner(device, obj);
                         }
 //                        if (ok == false) {
 //                            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(ERROR_INVALID_COMMAND));
@@ -495,6 +495,94 @@ bool MagicDevicePlugin::_pSendCommand(MagicDevice *device, const DRequestPacket 
     return false;
 }
 
+bool MagicDevicePlugin::SendCommandInner(MagicDevice *device, const QJsonObject &obj)
+{
+    bool bOk = false;
+    DRequestPacket packet;
+    packet.setPacketFromObj(obj);
+    DResultPacket resPacket(packet);
+
+    if ("GetEndEffectorStatus" == packet.api)
+    {
+        /*
+         * 这个接口，是要将GetEndEffectorType，GetEndEffectorSuctionCup，GetEndEffectorGripper的功能合并起来一次性请求获取，
+         * 但是目前下位机没有这样的命令，不支持这样的操作，所以只能在应用层做接口任务分解，待到所有请求都完毕后再合并结果，并返回给前端*/
+
+        //先删除，否则下列操作会出现重复id
+        m_requestPacketMap.remove(packet.id);
+
+        QStringList all;
+        all<<"GetEndEffectorType"<<"GetEndEffectorSuctionCup"<<"GetEndEffectorGripper";
+        MagicSpecialTask task;
+        task.response = resPacket;
+        for(int i=0; i<all.size(); ++i)
+        {
+            QJsonObject objTask(obj);
+            QString strMethod = "dobotlink."+packet.target+"."+all[i];
+            objTask.insert("method", strMethod);
+            task.request.enqueue(objTask);
+        }
+        auto itr = m_magicSpecialTask.insert(packet.id, task);
+
+        //取出一个并开始发送
+        QJsonObject objTask = itr.value().request.dequeue();
+
+        bOk = SendCommandSpecial(device, objTask);
+    }
+    else
+    {
+        bOk = _pSendCommand(device, packet);
+    }
+    return bOk;
+}
+
+bool MagicDevicePlugin::SendCommandSpecial(MagicDevice *device, const QJsonObject &obj)
+{
+    m_sourceObj = obj;
+
+    DRequestPacket dataSendPack;
+    dataSendPack.setPacketFromObj(obj);
+    m_requestPacketMap.insert(dataSendPack.id, dataSendPack);
+
+    return _pSendCommand(device, dataSendPack);
+}
+
+bool MagicDevicePlugin::DoSpecialResponse(MagicDevice *device, quint64 id, QString cmd, int res, QJsonValue params)
+{
+    auto itrSpecial = m_magicSpecialTask.find(id);
+    if (itrSpecial == m_magicSpecialTask.end())
+    {
+        return false;
+    }
+
+    QJsonObject resObj;
+    if (res == NOERROR) {
+        if (params.isNull() or params.isUndefined()) {
+            resObj.insert("result", true);
+        } else {
+            resObj.insert("result", params);
+        }
+        itrSpecial.value().result.insert(cmd, resObj);
+    } else {
+        QJsonObject errorObj;
+        errorObj.insert("code", res);
+        errorObj.insert("message", DError::getErrorMessage(res));
+        resObj.insert("error", errorObj);
+        itrSpecial.value().result.insert(cmd, resObj);
+    }
+    if (itrSpecial->request.isEmpty())
+    {
+        DResultPacket resPacket;
+        emit pSendMessage_signal(PluginName, itrSpecial.value().response.getResultObj(itrSpecial.value().result));
+        m_magicSpecialTask.remove(id);
+    }
+    else
+    {
+        QJsonObject objTask = itrSpecial.value().request.dequeue();
+        SendCommandSpecial(device, objTask);
+    }
+}
+
 /* 处理box下载命令 */
 void MagicDevicePlugin::_handleDownloadCmd(MagicDevice *device, const DRequestPacket &packet)
 {
@@ -530,12 +618,19 @@ void MagicDevicePlugin::_handleReceiveMessage_slot(quint64 id, QString cmd, int 
 
     if (m_requestPacketMap.contains(id)) {
         DRequestPacket requestPacket = m_requestPacketMap.take(id);
-        DResultPacket resPacket(requestPacket);
 
-        if (res == NOERROR) {
-            emit pSendMessage_signal(PluginName, resPacket.getResultObj(params));
-        } else {
-            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(res));
+        if (DoSpecialResponse(device,id,cmd,res,params))
+        {
+            qDebug()<<"response ok";
+        }
+        else
+        {
+            DResultPacket resPacket(requestPacket);
+            if (res == NOERROR) {
+                emit pSendMessage_signal(PluginName, resPacket.getResultObj(params));
+            } else {
+                emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(res));
+            }
         }
     } else if (e == ERROR_DEVICE_LOST_CONNECTION) {
         DNotificationPacket notiPacket(device->getWebsocketPort());

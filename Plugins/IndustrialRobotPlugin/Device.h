@@ -403,6 +403,11 @@ private:
     void pSetIONote(quint64 id, QJsonObject params);
     void pGetIONote(quint64 id, QJsonObject params);
 
+    /*适配NC，二代CR，小型控制柜*/
+    void pGetCabinetType(quint64 id, QJsonObject params);
+    void pGetCCBoxVoltage(quint64 id, QJsonObject params);
+    void pSetCCBoxVoltage(quint64 id, QJsonObject params);
+
 signals:
     void onReplyMessage_signal(quint64 id, QJsonValue value = QJsonValue());
     void onNotifyMessage_signal(quint64 id, QJsonObject obj = QJsonObject());
@@ -415,8 +420,9 @@ private:
     FileControll *m_fileControll;//the default object is FileControllSmb
     FileControll *m_pFileCtrl;//the real object
     FileControllSmb *m_pFileCtrlSmb;//the real object
-    QMap<QString, //portName
-        FileControll*> m_portFCSmb;
+    static QMap<QString, //portName
+                int //SMBType
+                > m_portFCSmb;
 #ifdef USE_MOBDEBUG
    Mobdebug *m_modebug;
 #endif

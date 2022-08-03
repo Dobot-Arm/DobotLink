@@ -51,7 +51,8 @@ SOURCES += \
     IndustrialRobotPlugin.cpp \
     Mobdebug.cpp \
     Module.cpp \
-    RobotStatus.cpp
+    RobotStatus.cpp \
+    cmythreadpool.cpp
 
 HEADERS += \
     ../../DobotLink/DError/DError.h \
@@ -64,7 +65,8 @@ HEADERS += \
     IndustrialRobotPlugin.h \
     Mobdebug.h \
     Module.h \
-    RobotStatus.h
+    RobotStatus.h \
+    cmythreadpool.h
 
 unix:!android {
     target.path = /usr/lib

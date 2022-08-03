@@ -27,10 +27,11 @@ public:
     };
 
     explicit Mobdebug(QObject *parent = nullptr);
+    virtual ~Mobdebug();
 
     bool start(quint64 id = 0);
 
-    bool udpOpen();
+    bool udpOpen(const QString& strDeviceIpAddress);
     void udpClose();
 
     void mo_run(quint64 id = 0);                            // 继续执行目标程序
@@ -72,11 +73,7 @@ private:
     QProcess *m_process;
     QTimer *m_timerMobdebug;
 
-    QUdpSocket *udpPrint;
-    QUdpSocket *udp1Cursor;
-    QUdpSocket *udp2Cursor;
-    QUdpSocket *udpSpecial;
-    QUdpSocket *udpBlockHighlight;
+    QString m_strDeviceIpAddress;
 
     void _processInit();
     void _udpInit();
@@ -105,11 +102,11 @@ private slots:
     void onProcessFinished_slot(int exitCode, QProcess::ExitStatus exitStatus);
     void onProcessStateChanged(QProcess::ProcessState newState);
 
-    void readPendingClientMsg_slot();
-    void readPending1stCursorMsg_slot();
-    void readPending2ndCursorMsg_slot();
-    void readPendingSpecialMsg_slot();
-    void readBlockHighlightId_slot();
+    static void readPendingClientMsg_slot();
+    static void readPending1stCursorMsg_slot();
+    static void readPending2ndCursorMsg_slot();
+    static void readPendingSpecialMsg_slot();
+    static void readBlockHighlightId_slot();
 };
 
 #endif // MOBDEBUG_H

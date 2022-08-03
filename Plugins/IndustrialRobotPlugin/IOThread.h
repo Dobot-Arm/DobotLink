@@ -22,14 +22,19 @@ public:
     }
     virtual ~BaseThread() {}
 
-    virtual void run() = 0;
+    void run() Q_DECL_OVERRIDE{
+        emit onBegin_signal();
+        exec();
+    };
 
+    virtual void exec()=0;
 signals:
-    void onFinished_signal(quint64 id, int code, QByteArray data);
+    void onFinished_signal(quint64 id, int code, QByteArray data, QJsonValue json);
+    void onBegin_signal();
 
 protected:
-    inline void finish(int code, QByteArray data = QByteArray()) {
-        emit onFinished_signal(m_id, code, data);
+    inline void finish(int code, QByteArray data = QByteArray(), QJsonValue json=QJsonValue()) {
+        emit onFinished_signal(m_id, code, data,json);
     }
 
     quint64 m_id;
@@ -44,7 +49,7 @@ public:
             const QString &fileName,
             QObject *parent = nullptr);
     ~ReadThread() {}
-    void run();
+    void exec();
 private:
     QString m_fileName;
 };
@@ -64,7 +69,7 @@ public:
             const QString &content,
             QObject *parent=nullptr);
     ~WriteThread() {}
-    void run();
+    void exec();
 private:
     QString m_fileName;
     QByteArray m_bytes;
@@ -81,7 +86,7 @@ public:
             const QJsonValue &value,
             QObject *parent=nullptr);
     ~ChangeFileThread() {}
-    void run();
+    void exec();
 private:
     QString m_fileName;
     QString m_key;
@@ -103,7 +108,7 @@ public:
             const QString &content,
             QObject *parent = nullptr);
     ~NewFileThread() {}
-    void run();
+    void exec();
 private:
     QString m_fileName;
     QByteArray m_bytes;
@@ -119,7 +124,7 @@ public:
             const QString &content,
             QObject *parent = nullptr);
     ~DecodeFileThread() {}
-    void run();
+    void exec();
 private:
     QString m_fileName;
     QString m_content;
@@ -136,7 +141,7 @@ public:
             const QDir &dir,
             QObject *parent = nullptr);
     ~NewFolderThread() {}
-    void run();
+    void exec();
 private:
     QString m_url;
     QString m_folderName;
@@ -152,7 +157,7 @@ public:
             const QString &strDir,
             QObject *parent = nullptr);
     ~CreateDirThread() {}
-    void run();
+    void exec();
 
 private:
     QString m_strDir;
@@ -168,10 +173,23 @@ public:
             const QString &newfolderName,
             QObject *parent = nullptr);
     ~RenameFolderThread() {}
-    void run();
+    void exec();
 private:
     QString m_folderName;
     QString m_newfolderName;
+};
+
+class ReadFolderThread: public BaseThread
+{
+public:
+    explicit ReadFolderThread(
+            const quint64 id,
+            const QString &folderName,
+            QObject *parent = nullptr);
+    ~ReadFolderThread() {}
+    void exec();
+private:
+    QString m_folderName;
 };
 
 /* 复制文件夹 */
@@ -187,7 +205,7 @@ public:
             const QString &newfolderName,
             QObject *parent = nullptr);
     ~CopyFolderThread() {}
-    void run();
+    void exec();
 private:
     QDir m_dir;
     QDir m_fromDir;
@@ -208,7 +226,7 @@ public:
             const QDir &dir,
             QObject *parent = nullptr);
     ~DeleteFolderThread() {}
-    void run();
+    void exec();
 private:
     QString m_url;
     QString m_folderName;
@@ -230,10 +248,7 @@ public:
     void SetDir(const QString& strDir);
     void SetFileFilter(const QStringList& lstFilter);
 
-    void run() override;
-
-signals:
-    void signalFinishedResult(quint64 id, QStringList fileList);
+    void exec() override;
 
 private:
     QString m_strDir; //访问的目录
@@ -251,7 +266,7 @@ public:
             const QStringList& delFiles,
             QObject *parent = nullptr);
     ~DeleteFilesThread() {}
-    void run();
+    void exec();
 
 private:
     QString m_strUrl;
@@ -268,11 +283,7 @@ public:
             const QString& strUrl,
             QObject *parent = nullptr);
     ~PathIsExistThread() {}
-    void run();
-
-
-signals:
-    void signalFinishedResult(quint64 id, bool bIsExist, bool bIsFile);
+    void exec();
 
 private:
     QString m_url;
@@ -288,7 +299,7 @@ public:
             const QString &strSmbFile,
             QObject *parent = nullptr);
     ~CopyFileLocaleToSMBThread() {}
-    void run();
+    void exec();
     inline void setTruncate(bool bIsTruncate){m_bIsTruncate = bIsTruncate;}
 private:
     QString m_strLocalFile;

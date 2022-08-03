@@ -14,12 +14,20 @@ FileControllSmb::FileControllSmb(const QString &ip, QObject *parent):
     m_ip = ip;
     m_strShareDir = "project";
     m_smbClient.reset(new CSambaClient);
-
-    m_pool.setMaxThreadCount(1);
 }
 
 FileControllSmb::~FileControllSmb()
 {
+    m_pool->Clear(this);
+}
+
+void FileControllSmb::setIpAddress(const QString &ip)
+{
+    if (ip != getIpAddress())
+    {
+        m_smbClient->Disconnect();
+        m_ip = ip;
+    }
 }
 
 void FileControllSmb::readFile(const quint64 id, const QString &fileName, quint32 timeout)
@@ -32,7 +40,8 @@ void FileControllSmb::readFile(const quint64 id, const QString &fileName, quint3
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         ReadThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -77,7 +86,8 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
         data.push_back(arr.at(i));
     }
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         WriteThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -113,7 +123,8 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
         data.push_back(arr.at(i));
     }
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         WriteThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -141,7 +152,8 @@ void FileControllSmb::changeFile(const quint64 id, const QString &fileName, cons
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         ChangeFileThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -184,7 +196,8 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
         data.push_back(arr.at(i));
     }
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         NewFileThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -220,7 +233,8 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
         data.push_back(arr.at(i));
     }
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         NewFileThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -248,7 +262,8 @@ void FileControllSmb::decodeFile(const quint64 id, const QString &fileName, cons
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         DecodeFileThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -288,7 +303,8 @@ void FileControllSmb::newFolder(const quint64 id, const QString &url, const QStr
     if (iPos>=0) strRealFilePath = strPath.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strPath;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         NewFolderThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -323,7 +339,8 @@ void FileControllSmb::newFolderRecursive(const quint64 id, const QString &strSub
     if (iPos>=0) strRealFilePath = strPath.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strPath;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         CreateDirThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -365,7 +382,8 @@ void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, 
     iPos = strNewPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strNewPath = strNewPath.mid(iPos+m_strShareDir.size());
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         RenameFolderThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -408,7 +426,8 @@ void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QSt
     iPos = strNewPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strNewPath = strNewPath.mid(iPos+m_strShareDir.size());
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         CopyFolderThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -441,7 +460,8 @@ void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const Q
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         DeleteFolderThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -458,7 +478,7 @@ void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const Q
     });
 }
 
-void FileControllSmb::readFolder(const quint64 id, const QString &folderName)
+void FileControllSmb::readFolder(const quint64 id, const QString &folderName, quint32 timeout)
 {
     QJsonObject result;
 
@@ -477,7 +497,8 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName)
         }
         r_folderName = root+r_folderName;
         qDebug() << __FUNCTION__ << r_folderName;
-        QtConcurrent::run(&m_pool,[=]{
+        m_pool->start(this,[=](bool isCanceled){
+            if (isCanceled) return ;
             QFile file(r_folderName);
             QDir dir(r_folderName);
             QStringList filter;
@@ -499,7 +520,8 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName)
     }
     else
     {
-        int timeout = 2;
+        timeout = timeout/1000;
+        timeout = timeout ? timeout : 2;
 
         QString strPath = folderName;
         strPath.replace('\\','/');
@@ -511,7 +533,8 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName)
         int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
         if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
 
-        QtConcurrent::run(&m_pool, [=]{
+        m_pool->start(this,[=](bool isCanceled){
+            if (isCanceled) return ;
             ReadFolderThreadSmb smb(m_smbClient);
             smb.SetId(id);
             smb.SetServer(m_ip.toStdString());
@@ -566,7 +589,8 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         CGetFileListThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -582,12 +606,12 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
         smb.OnFinishedResult = [this](uint64_t id, const std::list<std::string>& fileList){
-            QStringList allFiles;
+            QJsonArray arr;
             for(auto f : fileList)
             {
-                allFiles.push_back(QString(f.c_str()));
+                arr.append(QString(f.c_str()));
             }
-            emit signalFinishedGetFileListResult(id, NOERROR, allFiles);
+            emit onFinish_signal(id, NOERROR, QByteArray(), arr);
         };
         smb.exec();
     });
@@ -614,7 +638,8 @@ void FileControllSmb::DeleteFileName(const quint64 id, const QStringList& delFil
         vcFile.push_back(strPath.toStdString());
     }
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         DeleteFilesThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -641,7 +666,8 @@ void FileControllSmb::pathIsExist(const quint64 id, const QString &path, quint32
     if (iPos>=0) strRealFilePath = path.mid(iPos+m_strShareDir.size());
     else strRealFilePath = path;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         PathIsExistThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());
@@ -688,7 +714,8 @@ void FileControllSmb::copyFileFromLocaleToSmb(const quint64 id, const QString& s
     if (iPos>=0) strRealFilePath = strSmbFile.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strSmbFile;
 
-    QtConcurrent::run(&m_pool, [=]{
+    m_pool->start(this,[=](bool isCanceled){
+        if (isCanceled) return ;
         CopyFileLocaleToSMBThreadSmb smb(m_smbClient);
         smb.SetId(id);
         smb.SetServer(m_ip.toStdString());

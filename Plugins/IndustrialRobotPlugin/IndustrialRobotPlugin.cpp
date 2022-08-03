@@ -21,10 +21,12 @@ IndustrialRobotPlugin::IndustrialRobotPlugin(QObject *parent) : DPluginInterface
             this, &IndustrialRobotPlugin::handleReplyMessage_slot);
     connect(m_device, &Device::onErrorOccured_signal,
             this, &IndustrialRobotPlugin::handleErrorOccured_slot);
+    /*//这个device只做设备的搜索操作
     connect(m_device, &Device::onNotifyMessage_signal,
             this, &IndustrialRobotPlugin::handleUDPNotify_slot);
     connect(m_device, &Device::onDebuggerNotify_signal,
             this, &IndustrialRobotPlugin::handleDebuggerNotify_slot);
+    */
 
     QtConcurrent::run([]{
         QProcess *p = new QProcess();
@@ -111,14 +113,118 @@ void IndustrialRobotPlugin::pReceiveMassage_slot(QString id, QJsonObject obj)
 void IndustrialRobotPlugin::handleReplyMessage_slot(quint64 id, QJsonValue value)
 {
     DRequestPacket packet = m_requestPacketMap.take(id);
+
+    if (packet.id == 0 || packet.wsPort == 0)
+    {//之所以存在这种情况，是因为Mobdebug也会发这个消息给device，device然后转发给该插件，而它的id却是0
+        Device* pDevice = qobject_cast<Device*>(sender());
+        if (pDevice != nullptr)
+        {
+            packet.wsPort = pDevice->getWsPort();
+        }
+    }
+
     DResultPacket resPacket(packet);
 
-    emit pSendMessage_signal(PluginName, resPacket.getResultObj(value));
+    if (packet.api == "ConnectDobot")
+    {//收到device的消息，而且是连接的消息，则保存device
+        bool bSaved = false;
+        Device* pDevice = qobject_cast<Device*>(sender());
+        QString strPortName = packet.getParamValue("portName").toString();
+
+        /* 坑。。。。。。
+         * 之所以需要判断object和bool，是因为在Device::pConnectDobot里面也连接了Module::onReceiveData_signal的信号槽，结果该信号被发射时，
+         * 2个槽函数都被执行，往外发送的消息是object，另一个却是bool。可能会存在先后执行的问题，所以只能这么处理
+        */
+        if (value.isObject())
+        {
+            QJsonObject jo = value.toObject();
+            if (jo.contains("value") && jo.value("value").isString())
+            {
+                QString str = jo.value("value").toString();
+                if ("connected" == str)
+                {
+                    //m_mapDevices[strPortName] = pDevice;
+                    auto itr = m_mapDevices.find(strPortName);
+                    if (itr == m_mapDevices.end())
+                    {
+                        m_mapDevices[strPortName] = QSet<Device*>({pDevice});
+                    }
+                    else
+                    {
+                        itr->insert(pDevice);
+                    }
+                    bSaved = true;
+                }
+            }
+        }
+        else if (value.isBool())
+        {
+            if (value.toBool())
+            {
+                //m_mapDevices[strPortName] = pDevice;
+                auto itr = m_mapDevices.find(strPortName);
+                if (itr == m_mapDevices.end())
+                {
+                    m_mapDevices[strPortName] = QSet<Device*>({pDevice});
+                }
+                else
+                {
+                    itr->insert(pDevice);
+                }
+                bSaved = true;
+            }
+        }
+
+        if (!bSaved)
+        {//没有连接成功，则删掉对象
+            pDevice->deleteLater();
+        }
+        emit pSendMessage_signal(PluginName, resPacket.getResultObj(value));
+    }
+    else if (packet.api == "DisconnectDobot")
+    {//收到device的消息，而且是断开连接的消息，则删掉device
+        Device* pDevice = qobject_cast<Device*>(sender());
+        QString strPortName = packet.getParamValue("portName").toString();
+
+        auto itr = m_mapDevices.find(strPortName);
+        if (itr != m_mapDevices.end())
+        {
+            auto deviceList = m_mapDevices[strPortName];
+            deviceList.remove(pDevice);
+            if (deviceList.isEmpty())
+            {
+                m_mapDevices.remove(strPortName);
+            }
+        }
+        pDevice->deleteLater();
+        emit pSendMessage_signal(PluginName, resPacket.getResultObj(value));
+    }
+    else if (packet.api == "SearchDobot")
+    {
+        while (!m_reqSearchPacket.empty())
+        {
+            auto itr = m_reqSearchPacket.begin();
+            DResultPacket ressult(itr.value());
+            emit pSendMessage_signal(PluginName, ressult.getResultObj(value));
+            m_reqSearchPacket.erase(itr);
+        }
+    }
+    else
+    {
+        emit pSendMessage_signal(PluginName, resPacket.getResultObj(value));
+    }
 }
 
 void IndustrialRobotPlugin::handleDebuggerNotify_slot(QString msg)
 {
-    DNotificationPacket packet(0);
+    Device* pDevice = qobject_cast<Device*>(sender());
+    quint16 port = 0;
+    if (pDevice != nullptr)
+    {
+        port = pDevice->getWsPort();
+    }
+
+    DNotificationPacket packet(port);
     QJsonObject obj;
     obj.insert("msg", msg);
     emit pSendMessage_signal(PluginName, packet.getNotificationObj("IndustrialMsg", obj));
@@ -126,8 +232,15 @@ void IndustrialRobotPlugin::handleDebuggerNotify_slot(QString msg)
 
 void IndustrialRobotPlugin::handleUDPNotify_slot(quint64 id, QJsonObject obj)
 {
+    Device* pDevice = qobject_cast<Device*>(sender());
+    quint16 port = 0;
+    if (pDevice != nullptr)
+    {
+        port = pDevice->getWsPort();
+    }
+
     QString method;
-    DNotificationPacket packet(m_device->getWsPort());
+    DNotificationPacket packet(port);
     if(id==5000){
         method = "GetClientMsg";
     }
@@ -151,12 +264,49 @@ void IndustrialRobotPlugin::handleUDPNotify_slot(quint64 id, QJsonObject obj)
 void IndustrialRobotPlugin::handleErrorOccured_slot(quint64 id, int errCode, QString errStr)
 {
     DRequestPacket packet = m_requestPacketMap.take(id);
+
+    if (packet.id == 0 || packet.wsPort == 0)
+    {//之所以存在这种情况，是因为Mobdebug也会发这个消息给device，device然后转发给该插件，而它的id却是0
+        Device* pDevice = qobject_cast<Device*>(sender());
+        if (pDevice != nullptr)
+        {
+            packet.wsPort = pDevice->getWsPort();
+        }
+    }
+
     DResultPacket resPacket(packet);
 
-    if (errStr.size() == 0) {
-        emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(errCode));
-    } else {
-        emit pSendMessage_signal(PluginName, resPacket.getErrorObj(errCode, errStr));
+    if (packet.api == "ConnectDobot")
+    {//连接设备失败了，那么就要删掉
+        sender()->deleteLater();
+
+        if (errStr.size() == 0) {
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(errCode));
+        } else {
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObj(errCode, errStr));
+        }
+    }
+    else if (packet.api == "SearchDobot")
+    {
+        while (!m_reqSearchPacket.empty())
+        {
+            auto itr = m_reqSearchPacket.begin();
+            DResultPacket ressult(itr.value());
+            if (errStr.size() == 0) {
+                emit pSendMessage_signal(PluginName, ressult.getErrorObjWithCode(errCode));
+            } else {
+                emit pSendMessage_signal(PluginName, ressult.getErrorObj(errCode, errStr));
+            }
+            m_reqSearchPacket.erase(itr);
+        }
+    }
+    else
+    {
+        if (errStr.size() == 0) {
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(errCode));
+        } else {
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObj(errCode, errStr));
+        }
     }
 }
 
@@ -182,7 +332,46 @@ void IndustrialRobotPlugin::handleDobotLinkCommand(const QJsonObject &obj)
 void IndustrialRobotPlugin::disconnectDobot(quint16 port)
 {
     qDebug() << "close robot device, port:" << port;
-    m_device->pDisconnectDobot();
+    if (0 == port)
+    {//关闭所有
+        auto itr = m_mapDevices.begin();
+        while (itr != m_mapDevices.end())
+        {
+            foreach(Device* pDevice, itr.value())
+            {
+                pDevice->disconnect();
+                pDevice->pDisconnectDobot();
+                pDevice->deleteLater();
+            }
+            ++itr;
+        }
+        m_mapDevices.clear();
+    }
+    else
+    {//只关闭port的
+        auto itr = m_mapDevices.begin();
+        while (itr != m_mapDevices.end())
+        {
+            foreach(Device* pDevice, itr.value())
+            {
+                if (pDevice->getWsPort() == port)
+                {
+                    pDevice->disconnect();
+                    pDevice->pDisconnectDobot();
+                    pDevice->deleteLater();
+
+                    itr.value().remove(pDevice);
+                    break;
+                }
+            }
+            if (itr.value().isEmpty())
+            {
+                m_mapDevices.erase(itr);
+                break;
+            }
+            ++itr;
+        }
+    }
 }
 
 void IndustrialRobotPlugin::handleIndustrialRobotCommand(const QJsonObject &obj)
@@ -200,9 +389,74 @@ void IndustrialRobotPlugin::handleIndustrialRobotCommand(const QJsonObject &obj)
             emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(ERROR_INVALID_PORTNAME));
             return;
         }
-        m_device->setWsPort(packet.wsPort);
-    }
 
-    m_device->sendCommand(packet.api, packet.id, packet.paramsObj);
+        //请求连接时，先创建device
+        Device* pDevice = new Device(this);
+        pDevice->setWsPort(packet.wsPort);
+        connect(pDevice, &Device::onReplyMessage_signal,
+                this, &IndustrialRobotPlugin::handleReplyMessage_slot);
+        connect(pDevice, &Device::onErrorOccured_signal,
+                this, &IndustrialRobotPlugin::handleErrorOccured_slot);
+        connect(pDevice, &Device::onNotifyMessage_signal,
+                this, &IndustrialRobotPlugin::handleUDPNotify_slot);
+        connect(pDevice, &Device::onDebuggerNotify_signal,
+                this, &IndustrialRobotPlugin::handleDebuggerNotify_slot);
+        pDevice->sendCommand(packet.api, packet.id, packet.paramsObj);
+    }
+    else if (packet.api == "SearchDobot" || packet.api == "AddSearchIP"
+             || packet.api == "OpenNetUse" || packet.api == "OpenFireWall"
+             || packet.api == "CheckSamba" || packet.api == "OpenSamba"
+             || packet.api == "RestartComputer")
+    {
+        /*
+        **搜索优化：
+        **多个人同时搜索时，只做一次请求，
+        **即：当某一个人在搜索时，没有返回结果之前，后面来的搜索请求，都不处理，而是等待第一个
+        **搜索的结果，一次性分发给所有人
+        */
+        if (packet.api == "SearchDobot")
+        {
+            if (!m_reqSearchPacket.isEmpty())
+            {//不为空，表示当前已经有人正在搜索，所以本次不要再搜索了
+                m_reqSearchPacket.insert(packet.id, packet);
+                return ;
+            }
+            //当前没有搜索，也要保存起来
+            m_reqSearchPacket.insert(packet.id, packet);
+        }
+        m_device->sendCommand(packet.api, packet.id, packet.paramsObj);
+    }
+    else
+    {
+        QString strPortName = packet.getParamValue("portName").toString();
+        if (strPortName.isEmpty()) {
+            m_requestPacketMap.remove(packet.id);
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(ERROR_INVALID_PORTNAME));
+            return;
+        }
+        Device* pDevice = GetDeviceByPortNameAndWsPort(strPortName, packet.wsPort);
+        if (!pDevice)
+        {
+            m_requestPacketMap.remove(packet.id);
+            emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(ERROR_INVALID_DEVICE));
+            return;
+        }
+        pDevice->sendCommand(packet.api, packet.id, packet.paramsObj);
+    }
 }
 
+Device* IndustrialRobotPlugin::GetDeviceByPortNameAndWsPort(QString strPortName,quint16 wsPort)
+{
+    if (m_mapDevices.contains(strPortName))
+    {
+        const auto& keys = m_mapDevices[strPortName];
+        foreach(Device* p,keys)
+        {
+            if (wsPort == p->getWsPort())
+            {
+                return p;
+            }
+        }
+    }
+    return nullptr;
+}

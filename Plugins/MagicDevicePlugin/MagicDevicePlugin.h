@@ -14,6 +14,7 @@
 #include <QJsonArray>
 #include <QTimer>
 #include <QMap>
+#include <QQueue>
 
 #include "MessageCenter/DPacket.h"
 #include "MagicDevice.h"
@@ -23,6 +24,13 @@ public:
     QString portName;
     QString description;
     QString status;
+};
+
+struct MagicSpecialTask
+{
+    QQueue<QJsonObject> request;
+    DResultPacket response;
+    QJsonObject result;
 };
 
 class MagicDevice;
@@ -54,6 +62,7 @@ public:
 #endif
 
 private:
+    QHash<quint64, MagicSpecialTask> m_magicSpecialTask;
     QMap<quint64, DRequestPacket> m_requestPacketMap;
     QMap<QString, MagicDevice *> m_deviceMap;
     QMap<QString, MagicDevice *> m_checkDeviceMap;
@@ -91,6 +100,9 @@ private:
 
     void _pQueuedCmdStop(MagicDevice *device, const DRequestPacket &packet);
     bool _pSendCommand(MagicDevice *device, const DRequestPacket &packet);
+    bool SendCommandInner(MagicDevice *device, const QJsonObject &obj);
+    bool SendCommandSpecial(MagicDevice *device, const QJsonObject &obj);
+    bool DoSpecialResponse(MagicDevice *device, quint64 id, QString cmd, int res, QJsonValue params);
     void _pSetCommuTimeout(MagicDevice *device, const DRequestPacket &packet);
 
     void _handleDownloadCmd(MagicDevice *device, const DRequestPacket &packet);

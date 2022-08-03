@@ -36,7 +36,6 @@ Module::Module(QString basePort, QObject *parent) : QObject(parent), BasePort(ba
 #else
     m_manager = new QNetworkAccessManager(this);
 #endif
-    m_pThreadPool = new QThreadPool(this);
 
     m_iHttpRequestTryTimes = 0;
 }
@@ -63,9 +62,9 @@ QString Module::ip()
     return m_ip;
 }
 
-void Module::SetSearchIP(const QString& strIP)
+void Module::SetSearchIP(const QStringList& strIP)
 {
-    m_strNewSearchIP = strIP;
+    m_newSearchIp = strIP;
 }
 
 int Module::_checkSearchFinish(QSharedPointer<QMap<QPair<QString, SearchType>,  QSharedPointer<SearchResult>>> searchTypeRes, quint64 id)
@@ -141,14 +140,9 @@ void Module::sendSearchRequest(const QString &url, const quint64 id)
 #ifndef __arm__
     searchRes.get()->insert(WifiDefaultIPAddress, QSharedPointer<SearchResult>(new SearchResult()));
 #endif
-    if (!m_strNewSearchIP.isEmpty())
+    foreach(QString strNewIp,m_newSearchIp)
     {
-        searchRes.get()->insert(m_strNewSearchIP, QSharedPointer<SearchResult>(new SearchResult()));
-    }
-
-    if (m_pThreadPool->maxThreadCount() != searchRes->size())
-    {
-        m_pThreadPool->setMaxThreadCount(searchRes->size());
+        searchRes.get()->insert(strNewIp, QSharedPointer<SearchResult>(new SearchResult()));
     }
 
     //创建以<ip,SearchType>为key存储结果的结构体
@@ -190,7 +184,9 @@ void Module::sendSearchRequest(const QString &url, const quint64 id)
                 QPair<QString, SearchType> key;
                 foreach(key, searchTypeRes->keys())
                 {
-                    if (searchTypeRes->value(key)->state == SearchState::Searching) return ;
+                    auto state = searchTypeRes->value(key)->state;
+                    if (state == SearchState::Searching ||
+                            state == SearchState::Success) return ;
                 }
                 m_manager->clearAccessCache();
             }

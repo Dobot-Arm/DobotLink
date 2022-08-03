@@ -256,7 +256,6 @@ void DProcess::forceStopProcessAll()
         p.close();
 #elif defined (Q_OS_MAC)
         QProcess p;
-        QFileInfo fileInfo(processName);
         QString c = QString("pkill -f python");
         p.execute(c);
         p.waitForFinished();

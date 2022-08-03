@@ -91,9 +91,30 @@ extern uint8_t gLedHome;
 
 extern float vbg;
 
+/* 步进控制模式*/
+extern uint8_t gStepCtrlMode;
+extern uint8_t gStepCtrlModeTemp;
+
+extern uint32_t gCircleCount;
+extern uint8_t gWholeCircleFlag;
+extern uint8_t CalibrationMode;
+
+extern uint8_t gRearArmSavedFlag;
+extern uint8_t gFrontArmSavedFlag;
+extern uint8_t gUserCoordSavedFlag;
+
+extern int32_t gPosZero[6];
+
+extern uint8_t gFrontEnd_PWM_Flag;
+
 /* 舵机最大旋转角度标志 0--300° 1-- 270° */
 extern uint8_t gServoFlag;
 extern uint8_t LaserGravingFlag;
+
+/*机械臂速度比例*/
+extern float gRobotRatio;
+extern float gJogRobotRatio;
+/*末端配件类型*/
 
 /*末端配件类型*/
 extern uint8_t gEffectorType;
@@ -103,7 +124,10 @@ extern uint8_t gEffectorStatus[2];
 extern float  gSuctioncup_LinkBlockH;
 extern float  gGripper_LinkBlockH;
 extern float  gPen_LinkBlockH;
-
+/*碰撞检测相关参数*/
+extern uint8_t gCollisionDetectFlag;
+extern uint8_t gKeyLostExeFlag;
+/*机械臂各运行模式参数限制值*/
 
 extern float gVelocityLimit[4];
 extern float gAccelrationLimit[4];

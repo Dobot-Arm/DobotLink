@@ -66,7 +66,7 @@ public:
     bool setIpAddress(QString ip);
     QString ip();
     QString getIpAddress();
-    void SetSearchIP(const QString& strIP);
+    void SetSearchIP(const QStringList& strIP);
 
     /* get post */
     void sendGetRequest(const QString &url, const quint64 id = 0, const QString api = QString(),
@@ -97,8 +97,7 @@ private:
 #endif
 
     QString m_ip;
-    QString m_strNewSearchIP;
-    QThreadPool* m_pThreadPool;
+    QStringList m_newSearchIp;
     int m_iHttpRequestTryTimes; //http请求响应超时时重复的次数
 
 #ifdef USE_CURL_LIB

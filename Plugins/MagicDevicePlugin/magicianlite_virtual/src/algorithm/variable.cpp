@@ -96,11 +96,30 @@ uint8_t gLedHome = 0;
 
 float vbg;
 
+/* 步进控制模式*/
+uint8_t gStepCtrlMode = 0;
+uint8_t gStepCtrlModeTemp = 0;
+
+uint32_t gCircleCount;
+uint8_t gWholeCircleFlag;
+uint8_t CalibrationMode = 0;
+
+uint8_t gRearArmSavedFlag = 0;
+uint8_t gFrontArmSavedFlag = 0;
+uint8_t gUserCoordSavedFlag = 0;
+
+uint8_t gFrontEnd_PWM_Flag = 0; //默认FrontEnd_PWM作为舵机控制引脚
+
+int32_t gPosZero[6] = {0};
+
 /* 舵机最大旋转角度标志 0--300° 1-- 270° */
 uint8_t gServoFlag;
 
 uint8_t LaserGravingFlag;
 
+/*机械臂速度比例*/
+float gRobotRatio = 0;
+float gJogRobotRatio = 0;
 /*末端配件类型*/
 uint8_t gEffectorType = 0;
 uint8_t gEffectorEnale[2] = {0};
@@ -108,8 +127,12 @@ uint8_t gEffectorStatus[2] = {0};
 /*末端长度参数*/
 float  gSuctioncup_LinkBlockH = 93;
 float  gGripper_LinkBlockH = 93;
-float  gPen_LinkBlockH = 78.54;
+float  gPen_LinkBlockH = 93;//78.54;
 
+/*碰撞检测相关参数*/
+uint8_t gCollisionDetectFlag = 0;
+uint8_t gKeyLostExeFlag = 1;
+/*机械臂各运行模式参数限制值*/
 
 float gVelocityLimit[4] = {300,300,300,300};
 float gAccelrationLimit[4] = {400,400,400,400};

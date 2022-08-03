@@ -49,46 +49,55 @@ QString __getDobotPath(QString ip, T ...paths)
     return path;
 }
 
+CMyThreadPool* FileControll::m_pool = new CMyThreadPool(40);
 
 FileControll::FileControll(const QString &ip, QObject *parent):
     QObject(parent)
 {
     m_ip = ip;
-    m_pool.setMaxThreadCount(1);
 }
 
 FileControll::~FileControll()
 {
+    m_pool->Clear(this);
 }
 
-void FileControll::closureHandler(BaseThread *_thread, quint64 id, quint32 timeout)
+void FileControll::closureHandler(BaseThread *thread, quint64 id, quint32 timeout)
 {
     timeout = timeout ? timeout : DEFAULT_TIMEOUT;
-    QPointer<BaseThread> thread(_thread);
-    QTimer *timer(new QTimer(_thread));
+    //QPointer<BaseThread> thread(_thread);
+    QTimer *timer(new QTimer(thread));
     timer->setSingleShot(true);
     timer->setInterval(timeout);
 
-    connect(thread, &BaseThread::onFinished_signal, this, [=](quint64 _id, int code, QByteArray array) {
+    connect(thread, &BaseThread::onFinished_signal, this, [=](quint64 _id, int code, QByteArray array,QJsonValue json) {
         Q_UNUSED(_id)
-        if (!thread) return;
         if(!thread->property("isTimeout").toBool()) {
-            emit onFinish_signal(id, code, array,QJsonValue());
+            emit onFinish_signal(id, code, array, json);
         }
-        delete thread;
+        timer->stop();
+    });
+    connect(thread, &BaseThread::onBegin_signal, this, [=]{
+        timer->start();
     });
     connect(timer, &QTimer::timeout, this, [=] {
-        if (!thread) return;
-        if (m_pool.tryTake(thread)) {
-            delete thread;
-        } else {
-            thread->setProperty("isTimeout", true);
-        }
+        thread->setProperty("isTimeout", true);
+        thread->disconnect();
         qDebug() << "ERROR_FILE_TIMEOUT";
         emit onFinish_signal(id, ERROR_INDUSTRY_FILE_TIMEOUT, QByteArray(),QJsonValue());
     });
-    timer->start();
-    m_pool.start(thread);
+
+    thread->setAutoDelete(true);
+    m_pool->start(this,[thread](bool isCanceled){
+        if (!isCanceled)
+        {
+            thread->run();
+        }
+        if (thread->autoDelete())
+        {
+            thread->deleteLater();
+        }
+    });
 }
 
 void FileControll::readFile(const quint64 id, const QString &fileName, quint32 timeout)
@@ -213,29 +222,12 @@ void FileControll::setIpAddress(const QString &ip)
 }
 
 
-void FileControll::readFolder(const quint64 id, const QString &folderName)
+void FileControll::readFolder(const quint64 id, const QString &folderName, quint32 timeout)
 {
     QString r_folderName = __getDobotPath(m_ip, folderName);
     qDebug() << __FUNCTION__ << r_folderName;
-    QtConcurrent::run(&m_pool,[=]{
-        QFile file(r_folderName);
-        QDir dir(r_folderName);
-        QStringList filter;
-        QJsonObject result;
-        QString name;
-        QDateTime time;
-        QFileInfoList fileInfo = dir.entryInfoList(filter);
-        for (int i=0; i<fileInfo.count(); i++) {
-            name = fileInfo.at(i).fileName();
-            time = fileInfo.at(i).lastModified();
-            result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
-        }
-        if (fileInfo.count()>=2){
-            result.remove(".");
-            result.remove("..");
-        }
-        emit onFinish_signal(id, NOERROR, QByteArray(), QJsonValue(result));
-    });
+    ReadFolderThread *thread(new ReadFolderThread(id, r_folderName));
+    closureHandler(thread, id, timeout);
 }
 
 void FileControll::getFullFileNameList(const quint64 id, const QString& strDir,
@@ -249,37 +241,7 @@ void FileControll::getFullFileNameList(const quint64 id, const QString& strDir,
     pFileThread->SetFileFilter(lstFileNameFilter);
     pFileThread->SetDeepth(iDeepth);
 
-    //closureHandler(pFileThread, id, nTimeoutMillseconds);
-    nTimeoutMillseconds = nTimeoutMillseconds ? nTimeoutMillseconds : DEFAULT_TIMEOUT;
-    QPointer<CGetFileListThread> thdGuard(pFileThread);
-    QTimer* pTimer = new QTimer(pFileThread);
-    pTimer->setSingleShot(true);
-    pTimer->setInterval(nTimeoutMillseconds);
-
-    connect(thdGuard, &CGetFileListThread::signalFinishedResult, this, [=](quint64 id, QStringList fileList) {
-        if (!thdGuard) return;
-        if(!thdGuard->property("isTimeout").toBool())
-        {
-            for(auto itr = fileList.begin(); itr != fileList.end(); ++itr)
-            {
-                *itr = strDir+itr->mid(strDirectory.length());
-            }
-            emit signalFinishedGetFileListResult(id, NOERROR, fileList);
-        }
-        delete thdGuard;
-    });
-    connect(pTimer, &QTimer::timeout, this, [=] {
-        if (!thdGuard) return;
-        if (m_pool.tryTake(thdGuard)) {
-            delete thdGuard;
-        } else {
-            thdGuard->setProperty("isTimeout", true);
-        }
-        qDebug() << "ERROR_FILE_TIMEOUT";
-        emit signalFinishedGetFileListResult(id, ERROR_INDUSTRY_FILE_TIMEOUT, QStringList());
-    });
-    pTimer->start();
-    m_pool.start(thdGuard);
+    closureHandler(pFileThread, id, nTimeoutMillseconds);
 }
 
 void FileControll::DeleteFileName(const quint64 id, const QStringList& delFiles,quint32 nTimeoutMillseconds)
@@ -292,38 +254,8 @@ void FileControll::DeleteFileName(const quint64 id, const QStringList& delFiles,
 void FileControll::pathIsExist(const quint64 id, const QString &path, quint32 timeout)
 {
     QString r_fileName =__getDobotPath(m_ip, path);
-
-    auto pFileThread = new PathIsExistThread(id, r_fileName);
-
-    timeout = timeout ? timeout : DEFAULT_TIMEOUT;
-    QPointer<PathIsExistThread> thdGuard(pFileThread);
-    QTimer* pTimer = new QTimer(pFileThread);
-    pTimer->setSingleShot(true);
-    pTimer->setInterval(timeout);
-
-    connect(thdGuard, &PathIsExistThread::signalFinishedResult, this, [=](quint64 id, bool bIsExist, bool bIsFile) {
-        if (!thdGuard) return;
-        if(!thdGuard->property("isTimeout").toBool())
-        {
-            QJsonObject obj;
-            obj.insert("exist",bIsExist);
-            obj.insert("isFile",bIsFile);
-            emit onFinish_signal(id, NOERROR, QByteArray(), obj);
-        }
-        delete thdGuard;
-    });
-    connect(pTimer, &QTimer::timeout, this, [=] {
-        if (!thdGuard) return;
-        if (m_pool.tryTake(thdGuard)) {
-            delete thdGuard;
-        } else {
-            thdGuard->setProperty("isTimeout", true);
-        }
-        qDebug() << "ERROR_FILE_TIMEOUT";
-        emit onFinish_signal(id, ERROR_INDUSTRY_FILE_TIMEOUT, QByteArray(),QJsonValue());
-    });
-    pTimer->start();
-    m_pool.start(thdGuard);
+    PathIsExistThread *thread(new PathIsExistThread(id, r_fileName));
+    closureHandler(thread, id, timeout);
 }
 
 void FileControll::copyFileFromLocaleToSmb(const quint64 id, const QString& strLocaleFile, const QString& strSmbFile, bool bIsTruncate, quint32 timeout)

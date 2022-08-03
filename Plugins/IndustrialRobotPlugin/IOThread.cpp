@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QThread>
 #include <QQueue>
+#include <QDateTime>
 #include "DError/DError.h"
 
 
@@ -16,7 +17,7 @@ ReadThread::ReadThread(
 {
 }
 
-void ReadThread::run()
+void ReadThread::exec()
 {
     QFile file(m_fileName);
     QJsonValue value;
@@ -62,7 +63,7 @@ WriteThread::WriteThread(
 {
 }
 
-void WriteThread::run()
+void WriteThread::exec()
 {
     QFile file(m_fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -91,7 +92,7 @@ ChangeFileThread::ChangeFileThread(
 {
 }
 
-void ChangeFileThread::run()
+void ChangeFileThread::exec()
 {
     QFile file(m_fileName);
 
@@ -150,7 +151,7 @@ NewFileThread::NewFileThread(
 {
 }
 
-void NewFileThread::run()
+void NewFileThread::exec()
 {
     QFile file(m_fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -177,7 +178,7 @@ DecodeFileThread::DecodeFileThread(
 {
 }
 
-void DecodeFileThread::run()
+void DecodeFileThread::exec()
 {
     QByteArray array(m_content.toUtf8());
     QFile file(m_fileName);
@@ -207,7 +208,7 @@ NewFolderThread::NewFolderThread(
 {
 }
 
-void NewFolderThread::run()
+void NewFolderThread::exec()
 {
     if (m_dir.exists(m_folderName)) {
         qDebug() << "folder already exist." << m_dir;
@@ -229,7 +230,7 @@ CreateDirThread::CreateDirThread(
 {
 }
 
-void CreateDirThread::run()
+void CreateDirThread::exec()
 {
     QDir dir;
     if (!dir.mkpath(m_strDir)) {
@@ -251,7 +252,7 @@ RenameFolderThread::RenameFolderThread(
 {
 }
 
-void RenameFolderThread::run()
+void RenameFolderThread::exec()
 {
     QFile file(m_folderName);
     if (!file.exists()){
@@ -267,6 +268,35 @@ void RenameFolderThread::run()
     }
 }
 
+ReadFolderThread::ReadFolderThread(
+        const quint64 id,
+        const QString &folderName,
+        QObject *parent):
+    BaseThread(id, parent),
+    m_folderName(folderName)
+{
+}
+
+void ReadFolderThread::exec()
+{
+    QFile file(m_folderName);
+    QDir dir(m_folderName);
+    QStringList filter;
+    QJsonObject result;
+    QString name;
+    QDateTime time;
+    QFileInfoList fileInfo = dir.entryInfoList(filter);
+    for (int i=0; i<fileInfo.count(); i++) {
+        name = fileInfo.at(i).fileName();
+        time = fileInfo.at(i).lastModified();
+        result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+    }
+    if (fileInfo.count()>=2){
+        result.remove(".");
+        result.remove("..");
+    }
+    finish(NOERROR, QByteArray(), result);
+}
 
 CopyFolderThread::CopyFolderThread(
         const quint64 id,
@@ -285,7 +315,7 @@ CopyFolderThread::CopyFolderThread(
 {
 }
 
-void CopyFolderThread::run()
+void CopyFolderThread::exec()
 {
     QFile file(m_folderName);
 
@@ -332,7 +362,7 @@ DeleteFolderThread::DeleteFolderThread(
 {
 }
 
-void DeleteFolderThread::run()
+void DeleteFolderThread::exec()
 {
     QFile file(m_path);
 
@@ -380,7 +410,7 @@ void CGetFileListThread::SetFileFilter(const QStringList& lstFilter)
     m_lstFilter = lstFilter;
 }
 
-void CGetFileListThread::run()
+void CGetFileListThread::exec()
 {
     QStringList lstResult;
 
@@ -423,7 +453,12 @@ void CGetFileListThread::run()
         }
     }
 
-    emit signalFinishedResult(m_id,lstResult);
+    QJsonArray arr;
+    foreach(const auto& file, lstResult)
+    {
+        arr.append(file);
+    }
+    finish(NOERROR, QByteArray(), arr);
 }
 
 DeleteFilesThread::DeleteFilesThread(
@@ -437,7 +472,7 @@ DeleteFilesThread::DeleteFilesThread(
 {
 }
 
-void DeleteFilesThread::run()
+void DeleteFilesThread::exec()
 {
     foreach(QString strFile, m_delFiles)
     {
@@ -459,11 +494,16 @@ PathIsExistThread::PathIsExistThread(
 {
 }
 
-void PathIsExistThread::run()
+void PathIsExistThread::exec()
 {
     QFileInfo info(m_url);
     bool bOk = info.exists();
-    emit signalFinishedResult(m_id, bOk, info.isFile());
+
+    QJsonObject obj;
+    obj.insert("exist",bOk);
+    obj.insert("isFile",info.isFile());
+
+    finish(NOERROR, QByteArray(), obj);
 }
 
 CopyFileLocaleToSMBThread::CopyFileLocaleToSMBThread(const quint64 id,
@@ -477,7 +517,7 @@ CopyFileLocaleToSMBThread::CopyFileLocaleToSMBThread(const quint64 id,
     m_bIsTruncate = false;
 }
 
-void CopyFileLocaleToSMBThread::run()
+void CopyFileLocaleToSMBThread::exec()
 {
     QFile file(m_strLocalFile);
     if (!file.open(QFile::ReadOnly))

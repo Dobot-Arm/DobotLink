@@ -56,12 +56,20 @@ void DWebSocketServer::sendMessage(quint16 port, QString message)
     }
     else if (m_allClient.size()>0){
         //这种情况可能是各个插件向外发送通知消息，没有携带id，也不知道发给谁，所以只能群发
+        //但实际上，这些websocket的客户端基本都是在本地电脑上，也就是说ws的客户端ip都一样，那就根据端口区分也可以的
+        bool bFind = false;
         foreach(QWebSocket* pConn , m_allClient)
         {
-            if (pConn->isValid())
+            if (pConn->isValid() && port == pConn->peerPort())
             {
+                bFind = true;
                 pConn->sendTextMessage(message);
+                break;
             }
+        }
+        if (!bFind)
+        {
+            qDebug() << "[WebSocket-Server]: client is not found. port:" << port << message;
         }
     }
     else {

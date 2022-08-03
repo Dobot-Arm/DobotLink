@@ -5418,8 +5418,10 @@ void DMagicianProtocol::encodeSetWIFISSID(PacketPayload &payload, QJsonObject pa
 
     checkStringValue(params, "ssid");
 
-    char* ssid = params.value("ssid").toString().toLatin1().data();
-    payload.p_params.append(ssid, sizeof (char*));
+    QString str = params.value("ssid").toString();
+    QByteArray arr = str.toUtf8();
+    arr.append('\0');
+    payload.p_params.append(arr);
 }
 
 void DMagicianProtocol::encodeGetWIFISSID(PacketPayload &payload, QJsonObject params)
@@ -5438,8 +5440,10 @@ void DMagicianProtocol::encodeSetWIFIPassword(PacketPayload &payload, QJsonObjec
 
     checkStringValue(params, "password");
 
-    char* password = params.value("password").toString().toLatin1().data();
-    payload.p_params.append(password, sizeof (char*));
+    QString str = params.value("password").toString();
+    QByteArray arr = str.toUtf8();
+    arr.append('\0');
+    payload.p_params.append(arr);
 }
 
 void DMagicianProtocol::encodeGetWIFIPassword(PacketPayload &payload, QJsonObject params)
