@@ -8,3 +8,5 @@ Chinese version of the README -> please [click here](./readme_cn.md)
 3. DobotLink uses third-party open source libraries[libsmb2](https://github.com/sahlberg/libsmb2), and add an interface `int smb2_isconnect_share(struct smb2_context *smb2)`. For details, please refer to the source code.
 
 4. The source code of DobotLink follows the LGPL agreement
+
+5. You can see DobotLink source code on github[github上](https://github.com/Dobot-Arm/DobotLink)
