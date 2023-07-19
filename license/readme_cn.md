@@ -8,3 +8,5 @@ English version of the README -> please [click here](./readme.md)
 3. DobotLink使用了第三方开源库[libsmb2](https://github.com/sahlberg/libsmb2)，并增加一个接口`int smb2_isconnect_share(struct smb2_context *smb2)`，具体可以参考源码。
 
 4. DobotLink的源码遵循LGPL协议
+
+5. DobotLink已经开源到[github上](https://github.com/Dobot-Arm/DobotLink)
