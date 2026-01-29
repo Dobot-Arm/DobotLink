@@ -75,6 +75,9 @@ public:
     int smb2_rename(struct smb2_context *smb2, const char *oldpath,
                   const char *newpath);
 
+    uint32_t smb2_get_max_read_size(struct smb2_context *smb2);
+    uint32_t smb2_get_max_write_size(struct smb2_context *smb2);
+
 private:
     void ResetFuncPtr();
 
@@ -171,5 +174,11 @@ private:
 
     typedef int (*pfn_smb2_rename)(struct smb2_context *smb2, const char *oldpath,const char *newpath);
     pfn_smb2_rename pfn_rename;
+
+    typedef uint32_t (*pfn_smb2_get_max_write_size)(struct smb2_context *smb2);
+    pfn_smb2_get_max_write_size pfn_get_max_write_size;
+
+    typedef uint32_t (*pfn_smb2_get_max_read_size)(struct smb2_context *smb2);
+    pfn_smb2_get_max_read_size pfn_get_max_read_size;
 };
 

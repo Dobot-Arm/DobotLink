@@ -48,7 +48,7 @@ public:
         m_strPath = strPath;
     }
 
-    std::function<void(uint64_t id, int code, const std::vector<char>& data)> OnFinished;
+    std::function<void(uint64_t id, int code, const std::vector<char>& data, const std::string& strJson)> OnFinished;
 
     void exec()
     {
@@ -57,11 +57,11 @@ public:
 protected:
     virtual void run() = 0;
 
-    inline void finish(int code, const std::vector<char>& data={})
+    inline void finish(int code, const std::vector<char>& data={}, std::string strJson="")
     {
         if (nullptr != OnFinished)
         {
-            OnFinished(m_id, code, data);
+            OnFinished(m_id, code, data,strJson);
         }
     }
 
@@ -245,7 +245,9 @@ public:
 
     std::function<void(uint64_t id, const std::list<
                             std::tuple<std::string,//filename
-                                       uint64_t>//lastmodifytime
+                                       uint64_t,//lastmodifytime
+                                        bool//isFile
+                                        >
                        >& fileList)> OnFinishedResult;
 
 protected:
@@ -304,7 +306,7 @@ public:
     explicit PathIsExistThreadSmb(const std::shared_ptr<CSambaClient>& sptr):BaseThreadSmb(sptr){OnFinishedResult=nullptr;};
     ~PathIsExistThreadSmb() {}
 
-    std::function<void(uint64_t id, bool isExist,bool isFile)> OnFinishedResult;
+    std::function<void(uint64_t id, bool isExist,bool isFile, int64_t nFileSize)> OnFinishedResult;
 
 protected:
     void run();

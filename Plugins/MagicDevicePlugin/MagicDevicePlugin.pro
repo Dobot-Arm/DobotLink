@@ -13,9 +13,9 @@ contains(QT_ARCH, i386) {
     MY_OUTPUT_DIR=Output
 }
 
-include("./magicianlite_virtual/VirtualSerialPort.pri")
 
 !wasm {
+    include("./magicianlite_virtual/VirtualSerialPort.pri")
     QT       += serialport network
     TEMPLATE = lib
 }

@@ -144,7 +144,7 @@ DobotProtocolSlave::DobotProtocolSlave()
 #else
     serial_port_ = new QSerialPort(this);
 #endif
-    msg_queue_ = new MsgQueue<Packet>(50);
+    msg_queue_ = new MsgQueue<Packet>(500);
 }
 
 void DobotProtocolSlave::init(const QString& strPortName)
@@ -318,7 +318,13 @@ void DobotProtocolSlave::doQueueCmd()
 
     if (msg_queue_->getLength() > 0)
     {
-        auto request = msg_queue_->pop();
+        std::shared_ptr<Packet> request;
+        try{
+            request = msg_queue_->pop();
+        }catch(...){}
+        if (!request.get()){
+            return;
+        }
         current_proc_packet_ = request;
 
         DobotCmdManage* mgr = DobotCmdManage::instance();

@@ -5,6 +5,7 @@
 #include <emscripten/bind.h>
 #include <QDebug>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 
 EM_ASYNC_JS(
     void, WebRequestPorts, (uint8_t *errBytes, uint8_t *errLen),
@@ -62,7 +63,7 @@ EM_ASYNC_JS(
     });
 
 EM_ASYNC_JS(
-    void, WebSerialPortOpen, (uint16_t product, uint16_t vendor, uint8_t *errBytes, uint8_t *errLen),
+    void, WebSerialPortOpen, (uint16_t product, uint16_t vendor, uint8_t *errBytes, uint8_t *errLen, uint8_t *isFinish),
     {
         try {
             if (self.searchedPorts === undefined) {
@@ -92,15 +93,17 @@ EM_ASYNC_JS(
 
             self.SERIALPORT_POENED_READER[portName] = port.readable.getReader();
             self.SERIALPORT_POENED_WRITER[portName] = port.writable.getWriter();
+            Module.HEAPU8[isFinish] = 1;
         } catch (err) {
             const _errLen = lengthBytesUTF8(err.message) + 1;
             stringToUTF8(err.message, errBytes, _errLen);
             Module.HEAPU8[errLen] = _errLen;
+            Module.HEAPU8[isFinish] = 1;
         }
     });
 
 EM_ASYNC_JS(
-    bool, WebSerialPortClose, (uint16_t product, uint16_t vendor, uint8_t *errBytes, uint8_t *errLen),
+    bool, WebSerialPortClose, (uint16_t product, uint16_t vendor, uint8_t *errBytes, uint8_t *errLen, uint8_t *isFinish),
     {
         const portName = `${product},${vendor}`;
         reader = self.SERIALPORT_POENED_READER[portName];
@@ -126,27 +129,34 @@ EM_ASYNC_JS(
 
         if (port == undefined) {
             console.warn("port had been closed: ", portName);
+            Module.HEAPU8[isFinish] = 1;
         } else {
             try {
                 await port.close();
+                Module.HEAPU8[isFinish] = 1;
             } catch (err) {
                 const _errLen = lengthBytesUTF8(err.message) + 1;
                 stringToUTF8(err.message, errBytes, _errLen);
                 Module.HEAPU8[errLen] = _errLen;
+                Module.HEAPU8[isFinish] = 1;
             }
         }
     });
 
 EM_ASYNC_JS(
-    bool, WebSerialPortIsOpen, (uint16_t product, uint16_t vendor),
+    bool, WebSerialPortIsOpen, (uint16_t product, uint16_t vendor, uint8_t *result, uint8_t *isFinish),
     {
         const portName = `${product},${vendor}`;
         if (self.SERIALPORT_POENED_READER !== undefined &&
             self.SERIALPORT_POENED_READER[portName] !== undefined &&
             self.SERIALPORT_POENED_WRITER !== undefined &&
             self.SERIALPORT_POENED_WRITER[portName] !== undefined) {
+            Module.HEAPU8[result] = 1;
+            Module.HEAPU8[isFinish] = 1;
             return true;
         }
+        Module.HEAPU8[result] = 0;
+        Module.HEAPU8[isFinish] = 1;
         return false;
     });
 
@@ -184,7 +194,7 @@ EM_ASYNC_JS(
     });
 
 EM_ASYNC_JS(
-    void, WebSerialPortWrite, (uint16_t product, uint16_t vendor, uint8_t *data, int maxLen, uint8_t *errBytes, uint8_t *errLen),
+    void, WebSerialPortWrite, (uint16_t product, uint16_t vendor, uint8_t *data, int maxLen, uint8_t *errBytes, uint8_t *errLen, uint8_t *isFinish),
     {
         const portName = `${product},${vendor}`;
         let reader;
@@ -194,10 +204,12 @@ EM_ASYNC_JS(
         let bufData = new Uint8Array(new Uint8Array(Module.HEAPU8.buffer, data, maxLen));
         try {
             await writer.write(bufData);
+            Module.HEAPU8[isFinish] = 1;
         } catch (err) {
             const _errLen = lengthBytesUTF8(err.message) + 1;
             stringToUTF8(err.message, errBytes, _errLen);
             Module.HEAPU8[errLen] = _errLen;
+            Module.HEAPU8[isFinish] = 1;
         }
     });
 
@@ -273,7 +285,7 @@ EmSerialPort::EmSerialPort(QObject *parent) : QIODevice(parent),
                                               m_readRawBufferSize(0),
                                               m_readRawBuffer(new uint8_t[EMSERIALPORT_READ_RAW_BUFFER_ZISE])
 {
-    qDebug()<<"EmSerialPort::EmSerialPort create";
+    qDebug()<<"EmSerialPort::EmSerialPort create,version time:"<<__DATE__<<" "<<__TIME__;
     m_bIsOpenDevice.store(false);
     m_timer->setInterval(WEB_SERIALPORT_READ_INTERVAL);
     m_timer->setSingleShot(true);
@@ -292,7 +304,7 @@ EmSerialPort::EmSerialPort(QObject *parent) : QIODevice(parent),
             //
             // 综上： 在qt层用事件循环死等
             while (!isFinish) {
-                QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, QT_EVENT_PROCESS_TIME);
+                QCoreApplication::processEvents(QEventLoop::AllEvents, QT_EVENT_PROCESS_TIME);
             }
 
             if (m_bIsOpenDevice.load())
@@ -348,13 +360,10 @@ bool EmSerialPort::open(OpenMode mode)
     if (isOpen()) return true;
     m_readRawBufferSize = 0;
 
-    uint8_t errLen(0);
-    uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
-    WebSerialPortOpen(m_productId, m_vendorId, errBytes, &errLen);
-    _handleWebError(errBytes, errLen, SerialPortError::OpenError);
+    portOpenInner();
 
     // 根据web端的实际情况设置Mode，基类会用到这个mode
-    bool res = WebSerialPortIsOpen(m_productId, m_vendorId);
+    bool res = isPortOpenInner();
     if (res) {
         m_bIsOpenDevice.store(true);
         setOpenMode(QIODevice::ReadWrite);
@@ -378,15 +387,7 @@ qint64 EmSerialPort::writeData(const char *data, qint64 maxSize)
         return 0;
     }
 
-    uint8_t errLen(0);
-    uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
-
-    WebSerialPortWrite(m_productId, m_vendorId, (uint8_t *)data, maxSize, errBytes, &errLen);
-    if (_handleWebError(errBytes, errLen, SerialPortError::WriteError)) {
-        return 0;
-    }
-
-    return maxSize;
+    return writePortInner(data, maxSize);
 }
 
 void EmSerialPort::close()
@@ -394,17 +395,8 @@ void EmSerialPort::close()
     if (m_bIsOpenDevice.load())
     {
         m_bIsOpenDevice.store(false);
-        uint8_t errLen(0);
-        uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
-        WebSerialPortClose(m_productId, m_vendorId, errBytes, &errLen);
 
-        //做close操作时，不要发射信号了，QSerialPort和QSerialPortPrivate源码close时也没有发射信号
-        //_handleWebError(errBytes, errLen, SerialPortError::CloseError);
-        if (errLen>0)
-        {
-            QString errStr = QLatin1String((char*)errBytes, errLen - 1);
-            qDebug()<<"EmSerialPort::close error:"<<errStr;
-        }
+        closePortInner();
 
         // 根据web端的实际情况设置Mode，基类会用到这个mode
         //WebSerialPortIsOpen(m_productId, m_vendorId);
@@ -426,4 +418,74 @@ bool EmSerialPort::_handleWebError(uint8_t *errBytes, uint8_t errLen, SerialPort
     m_error = error;
     emit errorOccurred(m_error);
     return true;
+}
+
+void EmSerialPort::portOpenInner()
+{
+    uint8_t isFinish(0);
+    uint8_t errLen(0);
+    uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
+    WebSerialPortOpen(m_productId, m_vendorId, errBytes, &errLen, &isFinish);
+
+    QElapsedTimer elpased;
+    elpased.start();
+    while (!isFinish && !elpased.hasExpired(5000)) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, QT_EVENT_PROCESS_TIME);
+    }
+    _handleWebError(errBytes, errLen, SerialPortError::OpenError);
+}
+
+bool EmSerialPort::isPortOpenInner()
+{
+    uint8_t result(0);
+    uint8_t isFinish(0);
+    WebSerialPortIsOpen(m_productId, m_vendorId, &result, &isFinish);
+
+    QElapsedTimer elpased;
+    elpased.start();
+    while (!isFinish && !elpased.hasExpired(5000)) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, QT_EVENT_PROCESS_TIME);
+    }
+    return result!=0;
+}
+
+void EmSerialPort::closePortInner()
+{
+    uint8_t isFinish(0);
+    uint8_t errLen(0);
+    uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
+    WebSerialPortClose(m_productId, m_vendorId, errBytes, &errLen, &isFinish);
+
+    QElapsedTimer elpased;
+    elpased.start();
+    while (!isFinish && !elpased.hasExpired(800)) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, QT_EVENT_PROCESS_TIME);
+    }
+    //做close操作时，不要发射信号了，QSerialPort和QSerialPortPrivate源码close时也没有发射信号
+    //_handleWebError(errBytes, errLen, SerialPortError::CloseError);
+    if (errLen>0)
+    {
+        QString errStr = QLatin1String((char*)errBytes, errLen - 1);
+        qDebug()<<"EmSerialPort::close error:"<<errStr;
+    }
+}
+
+qint64 EmSerialPort::writePortInner(const char *data, qint64 maxSize)
+{
+    uint8_t isFinish(0);
+    uint8_t errLen(0);
+    uint8_t errBytes[EMSERIALPORT_ERROR_BUFFER_SIZE];
+
+    WebSerialPortWrite(m_productId, m_vendorId, (uint8_t *)data, maxSize, errBytes, &errLen, &isFinish);
+
+    QElapsedTimer elpased;
+    elpased.start();
+    while (!isFinish && !elpased.hasExpired(5000)) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, QT_EVENT_PROCESS_TIME);
+    }
+
+    if (_handleWebError(errBytes, errLen, SerialPortError::WriteError)) {
+        return 0;
+    }
+    return maxSize;
 }

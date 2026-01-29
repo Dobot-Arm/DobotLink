@@ -77,5 +77,9 @@ private:
     uint8_t *m_readRawBuffer;
 
     bool _handleWebError(uint8_t *errBtyes, uint8_t errLen, SerialPortError error);
+    void portOpenInner();
+    bool isPortOpenInner();
+    void closePortInner();
+    qint64 writePortInner(const char *data, qint64 maxSize);
 };
 #endif // EM_SERIALPORT

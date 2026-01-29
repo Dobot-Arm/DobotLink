@@ -21,7 +21,7 @@ public:
 
     /* file */
     virtual void readFile(const quint64 id, const QString &fileName, quint32 timeout=0);
-    virtual void readFolder(const quint64 id, const QString &folderName, quint32 timeout=0);
+    virtual void readFolder(const quint64 id, const QString &folderName, quint32 timeout=0,bool bIsOnlyFolder=false);
     virtual void writeFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout=0);
     virtual void writeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0);
     virtual void newFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0);
@@ -53,6 +53,8 @@ protected:
     static CMyThreadPool* m_pool;
 
     inline void closureHandler(BaseThread *_thread, quint64 id, quint32 timeout);
+
+    virtual QString joinPath(const QStringList& allPath);
 
 signals:
     void onFinish_signal(quint64 id, int code, QByteArray array, QJsonValue value);

@@ -80,6 +80,8 @@ bool CSambaCore::LoadDll(const QString& strDll)
         pfn_fstat = (pfn_smb2_fstat)m_lib.resolve("smb2_fstat");
         pfn_stat = (pfn_smb2_stat)m_lib.resolve("smb2_stat");
         pfn_rename = (pfn_smb2_rename)m_lib.resolve("smb2_rename");
+        pfn_get_max_read_size = (pfn_smb2_get_max_read_size)m_lib.resolve("smb2_get_max_read_size");
+        pfn_get_max_write_size = (pfn_smb2_get_max_write_size)m_lib.resolve("smb2_get_max_write_size");
         return true;
     }
     else
@@ -131,6 +133,8 @@ void CSambaCore::ResetFuncPtr()
     pfn_fstat = NULL;
     pfn_stat = NULL;
     pfn_rename = NULL;
+    pfn_get_max_write_size = NULL;
+    pfn_get_max_read_size = NULL;
 }
 
 struct smb2_context * CSambaCore::smb2_init_context()
@@ -325,5 +329,17 @@ int CSambaCore::smb2_rename(struct smb2_context *smb2, const char *oldpath,
 {
     if (pfn_rename) return pfn_rename(smb2,oldpath,newpath);
     return -1;
+}
+
+uint32_t CSambaCore::smb2_get_max_read_size(smb2_context *smb2)
+{
+    if (pfn_get_max_read_size) return pfn_get_max_read_size(smb2);
+    return 0;
+}
+
+uint32_t CSambaCore::smb2_get_max_write_size(smb2_context *smb2)
+{
+    if (pfn_get_max_write_size) return pfn_get_max_write_size(smb2);
+    return 0;
 }
 

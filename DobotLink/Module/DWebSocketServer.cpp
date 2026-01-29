@@ -19,15 +19,24 @@ DWebSocketServer *DWebSocketServer::getInstance()
 DWebSocketServer::DWebSocketServer(QObject *parent) : QObject(parent)
 {
     m_WebSocketServer = new QWebSocketServer("DobotLinkServer", QWebSocketServer::NonSecureMode, this);
+    m_WebSocketServer->setProxy(QNetworkProxy::NoProxy);
     connect(m_WebSocketServer, &QWebSocketServer::newConnection, this, &DWebSocketServer::onNewConnection_slot);
     connect(m_WebSocketServer, &QWebSocketServer::closed, this, &DWebSocketServer::onWebSocketServerClosed_slot);
 
-    bool ok = m_WebSocketServer->listen(QHostAddress::Any, 9090);
-    if (ok == false) {
-        qDebug() << "[WebSocket-Server] listen error." << m_WebSocketServer->errorString();
-    } else {
-        qDebug() << "DobotLink WebSocketServer PORT: [9090], enjoy it." << endl;
-    }
+    m_pTimer = new QTimer(this);
+    m_pTimer->setSingleShot(false);
+    m_pTimer->setInterval(1000);
+    connect(m_pTimer, &QTimer::timeout, this, [this]{
+        qDebug() << "DobotLink WebSocketServer(9090) start listening...." << endl;
+        bool ok = m_WebSocketServer->listen(QHostAddress::AnyIPv4, 9090);
+        if (ok == false) {
+            qDebug() << "DobotLink WebSocketServer listen error." << m_WebSocketServer->errorString();
+        } else {
+            qDebug() << "DobotLink WebSocketServer PORT: [9090], enjoy it." << endl;
+            m_pTimer->stop();
+        }
+    });
+    m_pTimer->start();
 }
 
 //![1] Send message
@@ -63,6 +72,8 @@ void DWebSocketServer::sendMessage(quint16 port, QString message)
             if (pConn->isValid() && port == pConn->peerPort())
             {
                 bFind = true;
+
+                RevertOriginJsonrpc(message);
                 pConn->sendTextMessage(message);
                 break;
             }
@@ -97,7 +108,7 @@ void DWebSocketServer::closeServer()
     m_mapClient.clear();
     for (auto itr = m_allClient.begin(); itr != m_allClient.end(); ++itr)
     {
-        delete *itr;
+        (*itr)->deleteLater();
     }
     m_allClient.clear();
 }
@@ -172,6 +183,45 @@ qint64 DWebSocketServer::GetJsonrpcId(QString strMsg)
     return 0;
 }
 
+void DWebSocketServer::InsertOriginJsonrpcId(QString &strJsonRpc, qint64 originRequestId)
+{
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(strJsonRpc.toUtf8(), &jsonError);
+    if (jsonError.error != QJsonParseError::NoError)
+    {
+        return ;
+    }
+    if (!doc.isObject())
+    {
+        return ;
+    }
+    QJsonObject obj = doc.object();
+    obj.insert("originRequestId", originRequestId);
+    doc.setObject(obj);
+    strJsonRpc = doc.toJson(QJsonDocument::Compact);
+}
+
+void DWebSocketServer::RevertOriginJsonrpc(QString &strJsonRpc)
+{
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(strJsonRpc.toUtf8(), &jsonError);
+    if (jsonError.error != QJsonParseError::NoError)
+    {
+        return ;
+    }
+    if (!doc.isObject())
+    {
+        return ;
+    }
+    QJsonObject obj = doc.object();
+    if (obj.contains("originRequestId"))
+    {
+        obj.insert("id", obj.value("originRequestId"));
+        obj.remove("originRequestId");
+    }
+    doc.setObject(obj);
+    strJsonRpc = doc.toJson(QJsonDocument::Compact);
+}
 //![3] WebSocketClient
 /* 收到信息*/
 void DWebSocketServer::onClientMessageReceived_slot(QString message)
@@ -187,6 +237,7 @@ void DWebSocketServer::onClientMessageReceived_slot(QString message)
     {//成功时把值保存起来，因为receiveMassage_signal里面成功时才把消息发给插件
         m_mapClient.insert(innerId, qMakePair(srcId,pClient));
     }
+    InsertOriginJsonrpcId(message, srcId);
     emit receiveMassage_signal(pClient->peerPort(), message);
 }
 
@@ -214,4 +265,5 @@ void DWebSocketServer::onClientDisconnection_slot()
         emit clientClose_signal(pClient->peerPort());
     }
 }
+
 

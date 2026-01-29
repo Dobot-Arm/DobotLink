@@ -246,6 +246,20 @@ private:
     /* Dobot Sensor id:216 subid:79 读取蓝按钮状态*/
     QJsonObject decodeGetBlueButtonStatus(quint8 rw, QByteArray params);    // 216-79
 
+
+    //将蓝牙模块初始化为主设备模式，并与从设备蓝牙建立透明传输连接
+    QJsonObject decodeBleSetMaster(quint8 rw, QByteArray params);     // 216-90
+    //将蓝牙模块初始化为从设备模式，并进入透明传输模式
+    QJsonObject decodeBleSetSlave(quint8 rw, QByteArray params);     // 216-91
+    //读取对端发送的数据
+    QJsonObject decodeBleRecvData(quint8 rw, QByteArray params);     // 216-92
+    //将字符串str发送给对端
+    QJsonObject decodeBleSendData(quint8 rw, QByteArray params);     // 216-93
+    //清除主从透明传输的接收缓存
+    QJsonObject decodeBleClearCacheData(quint8 rw, QByteArray params);     // 216-94
+    //获取当前设备的蓝牙mac地址
+    QJsonObject decodeBleGetMacAddress(quint8 rw, QByteArray params);     // 216-95
+
     /* GO相关 id:217 subid:10~20 */
     QJsonObject decodeSetStopPointParam(quint8 rw, QByteArray params);
     QJsonObject decodeSetStopPointServer(quint8 rw, QByteArray params);
@@ -518,6 +532,19 @@ private:
     void encodeGetRedButtonStatus(PacketPayload &payload, QJsonObject params);      // 216-78
     /* Dobot Sensor id:216 subid:79 读取蓝按钮状态*/
     void encodeGetBlueButtonStatus(PacketPayload &payload, QJsonObject params);     // 216-79
+
+    //将蓝牙模块初始化为主设备模式，并与从设备蓝牙建立透明传输连接
+    void encodeBleSetMaster(PacketPayload &payload, QJsonObject params);     // 216-90
+    //将蓝牙模块初始化为从设备模式，并进入透明传输模式
+    void encodeBleSetSlave(PacketPayload &payload, QJsonObject params);     // 216-91
+    //读取对端发送的数据
+    void encodeBleRecvData(PacketPayload &payload, QJsonObject params);     // 216-92
+    //将字符串str发送给对端
+    void encodeBleSendData(PacketPayload &payload, QJsonObject params);     // 216-93
+    //清除主从透明传输的接收缓存
+    void encodeBleClearCacheData(PacketPayload &payload, QJsonObject params);     // 216-94
+    //获取当前设备的蓝牙mac地址
+    void encodeBleGetMacAddress(PacketPayload &payload, QJsonObject params);     // 216-95
 
     /* Dobot Ble id:217 subid:10~20 GO相关*/
     void encodeSetStopPointParam(PacketPayload &payload, QJsonObject params);       // 217-10

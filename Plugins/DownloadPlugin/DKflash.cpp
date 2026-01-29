@@ -6,7 +6,7 @@
 const QString processName = "kflash.exe";
 DKflash::DKflash(QObject *parent) : QObject(parent)
 {
-
+    m_process = nullptr;
 }
 
 DKflash::~DKflash()

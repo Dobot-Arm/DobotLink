@@ -289,6 +289,14 @@ void DMagicianProtocol::_encodeFunctionInit()
     /* Dobot Sesnor id:216 subid:79 */
     m_encodeFuncMap.insert("GetBlueButtonStatus", &DMagicianProtocol::encodeGetBlueButtonStatus);
 
+    //216-90~95
+    m_encodeFuncMap.insert("BluetoothSetMaster", &DMagicianProtocol::encodeBleSetMaster);
+    m_encodeFuncMap.insert("BluetoothSetSlave", &DMagicianProtocol::encodeBleSetSlave);
+    m_encodeFuncMap.insert("BluetoothRecvData", &DMagicianProtocol::encodeBleRecvData);
+    m_encodeFuncMap.insert("BluetoothSendData", &DMagicianProtocol::encodeBleSendData);
+    m_encodeFuncMap.insert("BluetoothClearCacheData", &DMagicianProtocol::encodeBleClearCacheData);
+    m_encodeFuncMap.insert("BluetoothGetMacAddress", &DMagicianProtocol::encodeBleGetMacAddress);
+
     /* GO id:217 subid:10~20 */
     m_encodeFuncMap.insert("SetStopPointParam", &DMagicianProtocol::encodeSetStopPointParam);
     m_encodeFuncMap.insert("SetStopPointServer", &DMagicianProtocol::encodeSetStopPointServer);
@@ -495,6 +503,14 @@ void DMagicianProtocol::_decodeDobotSensorFunctionInit()
     m_decodeDobotSensorFuncMap.insert(78, &DMagicianProtocol::decodeGetRedButtonStatus);
     /* Dobot hand id:216 subid:79 */
     m_decodeDobotSensorFuncMap.insert(79, &DMagicianProtocol::decodeGetBlueButtonStatus);
+
+    //216-90~95
+    m_decodeDobotSensorFuncMap.insert(90, &DMagicianProtocol::decodeBleSetMaster);
+    m_decodeDobotSensorFuncMap.insert(91, &DMagicianProtocol::decodeBleSetSlave);
+    m_decodeDobotSensorFuncMap.insert(92, &DMagicianProtocol::decodeBleRecvData);
+    m_decodeDobotSensorFuncMap.insert(93, &DMagicianProtocol::decodeBleSendData);
+    m_decodeDobotSensorFuncMap.insert(94, &DMagicianProtocol::decodeBleClearCacheData);
+    m_decodeDobotSensorFuncMap.insert(95, &DMagicianProtocol::decodeBleGetMacAddress);
 }
 
 void DMagicianProtocol::_decodeBoxFuncInit() {
@@ -3783,6 +3799,98 @@ QJsonObject DMagicianProtocol::decodeGetBlueButtonStatus(quint8 rw, QByteArray p
     return resObj;
 }
 
+QJsonObject DMagicianProtocol::decodeBleSetMaster(quint8 rw, QByteArray params)
+{
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothSetMaster");
+        if (params.size() >= 1) {
+            int state = params[0];
+            QJsonObject paramsObj;
+            paramsObj.insert("state", state);
+            resObj.insert("params", paramsObj);
+        }
+    }
+    return resObj;
+}
+
+QJsonObject DMagicianProtocol::decodeBleSetSlave(quint8 rw, QByteArray params)
+{
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothSetSlave");
+        if (params.size() >= 1) {
+            int state = params[0];
+            QJsonObject paramsObj;
+            paramsObj.insert("state", state);
+            resObj.insert("params", paramsObj);
+        }
+    }
+    return resObj;
+}
+
+QJsonObject DMagicianProtocol::decodeBleRecvData(quint8 rw, QByteArray params)
+{
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothRecvData");
+    }
+    if (params.size() >= 2) {
+        int state = params[0]; //无数据时0，有数据时1
+        quint8 length = params[1]; //数据长度，最大21字节，不含终止符
+        QByteArray dataArr = params.mid(2, length);
+        QJsonObject paramsObj;
+        paramsObj.insert("state", state);
+        paramsObj.insert("data", QString(dataArr));
+        resObj.insert("params", paramsObj);
+    }
+    return resObj;
+}
+
+QJsonObject DMagicianProtocol::decodeBleSendData(quint8 rw, QByteArray params)
+{
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothSendData");
+        if (params.size() >= 1) {
+            int state = params[0];
+            QJsonObject paramsObj;
+            paramsObj.insert("state", state);
+            resObj.insert("params", paramsObj);
+        }
+    }
+    return resObj;
+}
+
+QJsonObject DMagicianProtocol::decodeBleClearCacheData(quint8 rw, QByteArray params)
+{
+    Q_UNUSED(params)
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothClearCacheData");
+    }
+    return resObj;
+}
+
+QJsonObject DMagicianProtocol::decodeBleGetMacAddress(quint8 rw, QByteArray params)
+{
+    qDebug()<<"======>"<<params.toHex();
+    QJsonObject resObj;
+    if (rw == 1) {
+        resObj.insert("cmd", "BluetoothGetMacAddress");
+    }
+    if (params.size() >= 2) {
+        int state = params[0]; //获取到mac时为0，未获取到时为1
+        quint8 length = params[1]; //数据长度，最大21字节，不含终止符
+        QByteArray dataArr = params.mid(2, length);
+        QJsonObject paramsObj;
+        paramsObj.insert("state", state);
+        paramsObj.insert("mac", QString(dataArr));
+        resObj.insert("params", paramsObj);
+    }
+    return resObj;
+}
+
 /**********************************************************************************
  * *** ENCODE *** ENCODE *** ENCODE *** ENCODE *** ENCODE *** ENCODE *** ENCODE ***
  *********************************************************************************/
@@ -6770,6 +6878,96 @@ void DMagicianProtocol::encodeGetBlueButtonStatus(PacketPayload &payload, QJsonO
     payload.p_params.append(reinterpret_cast<char *>(&port), sizeof (quint8));
 
     return ;
+}
+
+void DMagicianProtocol::encodeBleSetMaster(PacketPayload &payload, QJsonObject params)
+{
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 90;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
+
+    checkStringValue(params, "mac"); //12位的mac地址
+    QByteArray data = params.value("mac").toString().toUtf8();
+    if (data.length()>12)
+    {
+        data = data.mid(0,12);
+    }
+    else if (data.length()<12)
+    {
+        data.append(12-data.length(), '\0');
+    }
+    else
+    {
+        qDebug()<<"***********encodeBleSetMaster:the mac data length is not 12*******************";
+    }
+    payload.p_params.append(data);
+}
+
+void DMagicianProtocol::encodeBleSetSlave(PacketPayload &payload, QJsonObject params)
+{
+    Q_UNUSED(params)
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 91;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
+}
+
+void DMagicianProtocol::encodeBleRecvData(PacketPayload &payload, QJsonObject params)
+{
+    Q_UNUSED(params)
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 92;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
+}
+
+void DMagicianProtocol::encodeBleSendData(PacketPayload &payload, QJsonObject params)
+{
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 93;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
+
+    checkStringValue(params, "data");
+    QByteArray data = params.value("data").toString().toUtf8();
+    data.append('\0');
+    int dataLen = data.size();
+    if (dataLen>255)
+    {
+        qDebug()<<"********encodeBleWriteData:the data length is rather then 255*******************";
+    }
+    else
+    {
+        data = data.mid(0,254);
+        data.append('\0');
+    }
+    payload.p_params.append(static_cast<char>(dataLen));
+    payload.p_params.append(data);
+}
+
+void DMagicianProtocol::encodeBleClearCacheData(PacketPayload &payload, QJsonObject params)
+{
+    Q_UNUSED(params)
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 94;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
+}
+
+void DMagicianProtocol::encodeBleGetMacAddress(PacketPayload &payload, QJsonObject params)
+{
+    Q_UNUSED(params)
+    payload.p_cmdID = 216;
+    payload.p_ctrl.c_rw = 1;
+
+    quint8 subid = 95;
+    payload.p_params.append(reinterpret_cast<char *>(&subid), sizeof (quint8));
 }
 
 //! [217-10]

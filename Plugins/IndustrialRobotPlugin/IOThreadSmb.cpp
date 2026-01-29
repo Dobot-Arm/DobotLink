@@ -6,6 +6,8 @@
 #include <QDir>
 #include <QRegExp>
 #include <QFile>
+#include <QDeadlineTimer>
+#include <QThread>
 #include "DError/DError.h"
 
 #include <algorithm>
@@ -36,15 +38,64 @@ if (!m_smbClient->IsConnected())                                           \
     m_smbClient->SetShareDir(m_strShareDir);                               \
     m_smbClient->SetUser(nullptr);                                       \
     m_smbClient->SetPwd(nullptr);                                         \
-    m_smbClient->SetTimeout(m_iTimeoutSeconds);                            \
     m_smbClient->Connect();                                                \
 }                                                                         \
 if (!m_smbClient->IsConnected())                                           \
 {                                                                         \
-    qDebug()<<"connect smb fail:"<<m_smbClient->GetLastErrorMsg().c_str(); \
+    qDebug()<<"connect smb fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id; \
     finish(ERROR_INDUSTRY_FILE_TIMEOUT);                                  \
     return ;                                                              \
+}                                                                         \
+m_smbClient->SetTimeout(m_iTimeoutSeconds);
+
+#define SMBV2_WRITE_FILE_BATCH(smbObj,writeData)                                          \
+int iMaxSend = m_smbClient->GetMaxWriteSize();                                            \
+if (iMaxSend <= 0 || iMaxSend > 30720){                                                   \
+    iMaxSend = 30720;                                                                     \
+}                                                                                         \
+const char* pszData = writeData.data();                                                   \
+const int iTotalSize = writeData.size();                                                  \
+int iHasWrite = 0;                                                                        \
+m_smbClient->SetTimeout(2);                                                               \
+QDeadlineTimer deadline(m_iTimeoutSeconds*1000+500);                                      \
+do{                                                                                       \
+    if (iTotalSize-iHasWrite < iMaxSend){                                                 \
+        iMaxSend = iTotalSize-iHasWrite;                                                  \
+    }                                                                                     \
+    int iWritten = smbObj.Write(pszData+iHasWrite,iMaxSend);                              \
+    if (iWritten <= 0){                                                                   \
+        qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id; \
+        finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);                                          \
+        return ;                                                                            \
+    }                                                                                       \
+    iHasWrite += iWritten;                                                                  \
+    QThread::msleep(1);                                                                     \
+}while(iHasWrite<iTotalSize && !deadline.hasExpired());                                     \
+if (iHasWrite < iTotalSize){                                                                \
+    qDebug()<<"write file timeout,id:"<<m_id;                                               \
+    finish(ERROR_INDUSTRY_FILE_TIMEOUT);                                                    \
+    return ;                                                                                \
 }
+
+#define SMBV2_WRITE_FILE_BATCH2(smbObj,writeData) \
+int iMaxSend = 3e6; \
+const char* pszData = writeData.data();                                                   \
+const int iTotalSize = writeData.size();                                                  \
+int iHasWrite = 0;                                                                        \
+m_smbClient->SetTimeout(m_iTimeoutSeconds);                                               \
+do{                                                                                       \
+    if (iTotalSize-iHasWrite < iMaxSend){                                                 \
+        iMaxSend = iTotalSize-iHasWrite;                                                  \
+    }                                                                                     \
+    int iWritten = smbObj.Write(pszData+iHasWrite,iMaxSend);                              \
+    if (iWritten <= 0){                                                                   \
+        qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id; \
+        finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);                                          \
+        return ;                                                                            \
+    }                                                                                       \
+    iHasWrite += iWritten;                                                                  \
+    QThread::msleep(1);                                                                     \
+}while(iHasWrite<iTotalSize);
 
 void ReadThreadSmb::run()
 {
@@ -53,15 +104,23 @@ void ReadThreadSmb::run()
     CSambaFile smb(m_smbClient.get());
     if (!smb.Open(m_strPath))
     {
-        qDebug()<<"read file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"read file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     std::string strValue = smb.ReadAllText().c_str();
     smb.Close();
-
     std::vector<char> data(strValue.begin(),strValue.end());
-    finish(NOERROR, data);
+
+    qint64 createTime = smb.GetFileInfo().nCreateTime;
+    qint64 lastModifyTime = smb.GetFileInfo().nLastModifyTime;
+    QJsonObject objTime;
+    objTime.insert("createTimestamp", createTime);
+    objTime.insert("lastModifyTimestamp", lastModifyTime);
+    QJsonDocument doc(objTime);
+    QString strJson(doc.toJson());
+
+    finish(NOERROR, data, strJson.toStdString());
 }
 
 void WriteThreadSmb::run()
@@ -71,18 +130,13 @@ void WriteThreadSmb::run()
     CSambaFile smb(m_smbClient.get());
     if (!smb.OpenTruncate(m_strPath))
     {
-        qDebug()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     if (m_bytes.size() > 0)
     {
-        if (smb.Write(m_bytes.data(),m_bytes.size()) != (int)m_bytes.size())
-        {
-            qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
-            finish( ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
-            return ;
-        }
+        SMBV2_WRITE_FILE_BATCH2(smb, m_bytes);
     }
     smb.Close();
     finish(NOERROR);
@@ -96,14 +150,21 @@ void ChangeFileThreadSmb::run()
     CSambaFile smb(m_smbClient.get());
     if (!smb.Open(m_strPath))
     {
-        qDebug()<<"read file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"read file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     QByteArray data(smb.ReadAllText().c_str());
     smb.Close();
 
-    QJsonDocument jdc(QJsonDocument::fromJson(data));
+    QJsonParseError err;
+    QJsonDocument jdc = QJsonDocument::fromJson(data, &err);
+    if (err.error != QJsonParseError::NoError || !jdc.isObject())
+    {
+        qDebug() << m_strPath.c_str() << "file content is not json object." << err.errorString()<<" id:"<<m_id;
+        finish(ERROR_INDUSTRY_JSONOBJECT);
+        return ;
+    }
     QJsonObject obj = jdc.object();
     //修改key对应的value
     obj[QString(m_strKey.c_str())] = m_strContent;
@@ -113,21 +174,18 @@ void ChangeFileThreadSmb::run()
     //write
     if (!smb.OpenTruncate(m_strPath))
     {
-        qDebug()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     if (data.size() > 0)
     {
-        if (smb.Write(data.data(),data.size()) != data.size())
-        {
-            qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
-            finish( ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
-            return ;
-        }
+        SMBV2_WRITE_FILE_BATCH2(smb, data);
     }
     smb.Close();
-    finish(NOERROR);
+
+    std::vector<char> dataTmp(data.begin(),data.end());
+    finish(NOERROR, dataTmp);
 }
 
 void NewFileThreadSmb::run()
@@ -137,18 +195,13 @@ void NewFileThreadSmb::run()
     CSambaFile smb(m_smbClient.get());
     if (!smb.OpenTruncate(m_strPath))
     {
-        qDebug()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     if (m_bytes.size()>0)
     {
-        if (smb.Write(m_bytes.data(),m_bytes.size()) != (int)m_bytes.size())
-        {
-            qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
-            finish( ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
-            return ;
-        }
+        SMBV2_WRITE_FILE_BATCH2(smb, m_bytes);
     }
     smb.Close();
     finish(NOERROR);
@@ -161,19 +214,14 @@ void DecodeFileThreadSmb::run()
     CSambaFile smb(m_smbClient.get());
     if (!smb.OpenTruncate(m_strPath))
     {
-        qDebug()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"open file fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
     if (!m_strContent.empty())
     {
         QByteArray bytes = QByteArray::fromBase64(QByteArray(m_strContent.c_str()));
-        if (smb.Write(bytes.data(),bytes.size()) != (int)bytes.size())
-        {
-            qDebug()<<"write file fail:"<<m_smbClient->GetLastErrorMsg().c_str();
-            finish( ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
-            return ;
-        }
+        SMBV2_WRITE_FILE_BATCH2(smb, bytes);
     }
     smb.Close();
     finish(NOERROR);
@@ -186,13 +234,13 @@ void NewFolderThreadSmb::run()
     CSambaDirectory smb(m_smbClient.get());
     if (smb.IsExists(m_strPath))
     {
-        qDebug() << "folder already exist." << m_strPath.c_str();
+        qDebug() <<m_strPath.c_str()<<"folder already exist." << m_strPath.c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_ALREADY_EXIST);
         return ;
     }
     if (!smb.Create(m_strPath))
     {
-        qDebug()<<"create dir fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"create dir fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
         return ;
     }
@@ -211,6 +259,7 @@ void CreateDirThreadSmb::run()
     CSambaDirectory smb(m_smbClient.get());
     if (!smb.CreateRecursive(m_strPath))
     {
+        qDebug()<<m_strPath.c_str()<<" create dir fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
         return;
     }
@@ -230,7 +279,7 @@ void RenameFolderThreadSmb::run()
     }
     if (!smb.Rename(m_strPath, m_strNewNamePath))
     {
-        qDebug()<<"file rename fail:"<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<m_strPath.c_str()<<"file rename "<<m_strNewNamePath.c_str()<<"fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_RENAME);
         return;
     }
@@ -244,21 +293,25 @@ void CopyFolderThreadSmb::run()
     CSambaDirectory smb(m_smbClient.get());
     if (!smb.IsExists(m_strPath))
     {
+        qDebug()<<m_strPath.c_str()<<" dir not exist,"<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_NOT_EXIST);
         return;
     }
     if (smb.IsExists(m_strNewPath))
     {
+        qDebug()<<m_strNewPath.c_str()<<" the new dir is exist,"<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_ALREADY_EXIST);
         return;
     }
     if (!smb.CreateRecursive(m_strNewPath))
     {
+        qDebug()<<m_strNewPath.c_str()<<" the new dir create fail:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
         return;
     }
     if (!smb.Open(m_strPath))
     {
+        qDebug()<<m_strPath.c_str()<<" can not open:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_ENTER);
         return;
     }
@@ -289,11 +342,13 @@ void DeleteFolderThreadSmb::run()
     CSambaDirectory smb(m_smbClient.get());
     if (!smb.IsExists(m_strPath))
     {
+        qDebug()<<m_strPath.c_str()<<" dir not exist,"<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_NOT_EXIST);
         return;
     }
     if (!smb.DeleteRecursive(m_strPath))
     {
+        qDebug()<<m_strPath.c_str()<<" can not delete:"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_REMOVE);
         return ;
     }
@@ -305,7 +360,9 @@ void ReadFolderThreadSmb::run()
     SMB_CHECK_AND_CONNECT();
 
     std::list<std::tuple<std::string,//filename
-                         uint64_t>//lastmodifytime
+                        uint64_t,//lastmodifytime
+                         bool//isFile
+                        >
              > fileList;
 
     CSambaDirectory smb(m_smbClient.get());
@@ -316,11 +373,11 @@ void ReadFolderThreadSmb::run()
         {
             if (f.bIsDir)
             {
-                fileList.push_back(std::make_tuple(f.strName, f.nLastModifyTime));
+                fileList.push_back(std::make_tuple(f.strName, f.nLastModifyTime, false));
             }
             else if (f.bIsFile)
             {
-                fileList.push_back(std::make_tuple(f.strName, f.nLastModifyTime));
+                fileList.push_back(std::make_tuple(f.strName, f.nLastModifyTime, true));
             }
         }
         smb.Close();
@@ -381,7 +438,7 @@ void CGetFileListThreadSmb::run()
     {
         for(auto str : m_lstFilter)
         {
-            QRegExp reg(QString(str.c_str()));
+            QRegExp reg(QString(str.c_str()), Qt::CaseSensitive, QRegExp::Wildcard);
 
             auto itr = lstResult.begin();
             while(itr != lstResult.end())
@@ -415,7 +472,7 @@ void DeleteFilesThreadSmb::run()
         CSambaFile smb(m_smbClient.get());
         if (!smb.Delete(str))
         {
-            qDebug()<<"delete failed:"<<str.c_str()<<m_smbClient->GetLastErrorMsg().c_str();
+            qDebug()<<"delete failed:"<<str.c_str()<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         }
     }
     finish(NOERROR);
@@ -428,7 +485,7 @@ void PathIsExistThreadSmb::run()
     bool bIsExist = CSambaIOStream::GetPathInfo(m_smbClient.get(), m_strPath, info);
     if (nullptr != OnFinishedResult)
     {
-        OnFinishedResult(m_id, bIsExist,info.bIsFile);
+        OnFinishedResult(m_id, bIsExist,info.bIsFile, bIsExist?info.nSize:0);
     }
 }
 
@@ -437,13 +494,13 @@ void CopyFileLocaleToSMBThreadSmb::run()
     QFile localFile(QString::fromStdString(m_strLocalFile));
     if (!localFile.exists())
     {
-        qDebug() << localFile.fileName() << "file cannot copy.because the file has not exist!";
+        qDebug() << localFile.fileName() << "file cannot copy.because the file has not exist!"<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_NOT_EXIST);
         return ;
     }
     if (!localFile.open(QFile::ReadOnly))
     {
-        qDebug() << localFile.fileName() << " file cannot open,"<<localFile.errorString();
+        qDebug() << localFile.fileName() << " file cannot open,"<<localFile.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
@@ -454,7 +511,7 @@ void CopyFileLocaleToSMBThreadSmb::run()
     {
         if (CSambaIOStream::IsExists(m_smbClient.get(), m_strPath))
         {
-            qDebug() << m_strPath.c_str() << "file cannot copy.because the file has already exist!"<<m_smbClient->GetLastErrorMsg().c_str();
+            qDebug() << m_strPath.c_str() << "file cannot copy.because the file has already exist!"<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
             finish(ERROR_INDUSTRY_FILE_CAN_NOT_COPY);
             return ;
         }
@@ -462,40 +519,34 @@ void CopyFileLocaleToSMBThreadSmb::run()
     CSambaFile smbFile(m_smbClient.get());
     if (!smbFile.OpenTruncate(m_strPath))
     {
-        qDebug()<<"open failed:"<<m_strPath.c_str()<<m_smbClient->GetLastErrorMsg().c_str();
+        qDebug()<<"open failed:"<<m_strPath.c_str()<<m_smbClient->GetLastErrorMsg().c_str()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
 
     const int iBufferSize = 1024*1024;
     std::unique_ptr<char[]> uptr(new char[1024*1024]);
+    m_smbClient->SetTimeout(2);
+    QDeadlineTimer deadTime(m_iTimeoutSeconds*1000+500);
     do
     {
         const int iRead = localFile.read(uptr.get(), iBufferSize);
         if (0 == iRead)
         {
-            break;
+            finish(NOERROR);
+            return ;
         }
         else if (iRead < 0)
         {
-            qDebug() << localFile.fileName() << " file cannot read,"<<localFile.errorString();
+            qDebug() << localFile.fileName() << " file cannot read,"<<localFile.errorString()<<" id:"<<m_id;
             finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
             return ;
         }
-        int iHasWriten = 0;
-        while (iHasWriten < iRead)
-        {
-            int iWrite = smbFile.Write(uptr.get()+iHasWriten, iRead-iHasWriten);
-            if (iWrite <= 0)
-            {
-                qDebug()<<"write failed:"<<m_strPath.c_str()<<m_smbClient->GetLastErrorMsg().c_str();
-                finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
-                return ;
-            }
-            iHasWriten += iWrite;
-        }
-    }while(true);
+        QByteArray writeData(uptr.get(), iRead);
+        SMBV2_WRITE_FILE_BATCH2(smbFile, writeData);
+    }while(!deadTime.hasExpired());
 
-
-    finish(NOERROR);
+    qDebug()<<"write file timeout,id:"<<m_id;
+    finish(ERROR_INDUSTRY_FILE_TIMEOUT);
 }
+

@@ -4,6 +4,10 @@
 #include <QSerialPortInfo>
 #include <QUdpSocket>
 #include <QNetworkDatagram>
+
+#include "virtualport/VirtualSerialPort.h"
+#include "virtualport/VirtualSerialPortInfo.h"
+#include "virtualport/VSPServer.h"
 #else
 #include "WebAssembly/EmSerialPort.h"
 #endif
@@ -15,10 +19,6 @@
 #include "DError/DError.h"
 #include "DProtocol2.h"
 #include "DProtocol3.h"
-
-#include "virtualport/VirtualSerialPort.h"
-#include "virtualport/VirtualSerialPortInfo.h"
-#include "virtualport/VSPServer.h"
 
 #define CLIENT_PORT (12345)     /* udp客户端端口号默认设置 */
 #define HEAD_P2_1 (0xAA)
@@ -68,6 +68,7 @@ void MessageHandler::_TimerInit()
     m_timerDeviceKeepAlive->setInterval(500);
     connect(m_timerDeviceKeepAlive, &QTimer::timeout, this, [=](){
         bool check = false;
+#ifndef __wasm__
         if (nullptr != qobject_cast<CVirtualSerialPort*>(m_ioDevice))
         {
             foreach (const CVirtualSerialPortInfo &portInfo, CVirtualSerialPortInfo::availablePorts()){
@@ -79,17 +80,22 @@ void MessageHandler::_TimerInit()
         }
         else
         {
-#ifndef __wasm__
             foreach (const QSerialPortInfo &portInfo, QSerialPortInfo::availablePorts()) {
-#else
-            foreach (const EmSerialPortInfo &portInfo, EmSerialPortInfo::availablePorts()) {
-#endif
                 if (portInfo.portName() == getPortName()) {
                     check = true;
                     break;
                 }
             }
         }
+#else
+        foreach (const EmSerialPortInfo &portInfo, EmSerialPortInfo::availablePorts()) {
+            if (portInfo.portName() == getPortName()) {
+                check = true;
+                break;
+            }
+        }
+#endif
+
         if (check == false) {
             disconnectDevice();
             emit errorOccurred_signal(ERROR_DEVICE_LOST_CONNECTION);
@@ -414,7 +420,7 @@ bool MessageHandler::isConnected() const
 void MessageHandler::setPortName(QString portName)
 {
     m_isSerialConnection = true;
-
+#ifndef __wasm__
     if (CVirtualSerialPortInfo::IsVirtualPort(portName))
     {//有点恶心的做法，因为构造函数中已经把串口对象创建好了，实际还不知道当前是否为虚拟串口
         CVirtualSerialPort* pVSP = qobject_cast<CVirtualSerialPort*>(m_ioDevice);
@@ -441,16 +447,13 @@ void MessageHandler::setPortName(QString portName)
             connect(pPort, &QIODevice::readyRead, this, &MessageHandler::onSerialReadyRead_slot);
             m_ioDevice = pPort;
         }
+        return ;
     }
-    else
-    {
-#ifndef __wasm__
-        QSerialPort *_serialPort = static_cast<QSerialPort *>(m_ioDevice);
+    QSerialPort *_serialPort = static_cast<QSerialPort *>(m_ioDevice);
 #else
-        EmSerialPort *_serialPort = static_cast<EmSerialPort *>(m_ioDevice);
+    EmSerialPort *_serialPort = static_cast<EmSerialPort *>(m_ioDevice);
 #endif
-        _serialPort->setPortName(portName);
-    }
+    _serialPort->setPortName(portName);
 }
 
 QString MessageHandler::getPortName()
@@ -458,21 +461,17 @@ QString MessageHandler::getPortName()
     if (!m_isSerialConnection) {
         return m_deviceUdpIp;
     }
-
+#ifndef __wasm__
     CVirtualSerialPort* pVSP = qobject_cast<CVirtualSerialPort*>(m_ioDevice);
     if (nullptr != pVSP)
     {
         return pVSP->portName();
     }
-    else
-    {
-#ifndef __wasm__
-        QSerialPort *_serialPort = static_cast<QSerialPort *>(m_ioDevice);
+    QSerialPort *_serialPort = static_cast<QSerialPort *>(m_ioDevice);
 #else
-        EmSerialPort *_serialPort = static_cast<EmSerialPort *>(m_ioDevice);
+    EmSerialPort *_serialPort = static_cast<EmSerialPort *>(m_ioDevice);
 #endif
-        return _serialPort->portName();
-    }
+    return _serialPort->portName();
 }
 
 void MessageHandler::setUdpIpAddress(QString ip)

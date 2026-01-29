@@ -6,6 +6,7 @@
 const QString processName = "dfucmd.exe";
 DDfufile::DDfufile(QObject *parent) : QObject(parent)
 {
+    m_process = nullptr;
 //    _processInit();
 }
 
@@ -152,6 +153,7 @@ void DDfufile::stopProcess()
 void DDfufile::onProcessReadyRead_slot()
 {
     QString readStr = QString::fromLatin1(m_process->readAll());
+    qDebug().noquote().nospace()<<"dfuprint:"<<readStr;
     if (readStr.contains("0 Device(s) found")){
         qDebug() << "device is not in firmware mode";
         emit onProcessError_signal(start_id, ERROR_DOWNLOAD_FIRMWARE, readStr);
@@ -178,7 +180,7 @@ void DDfufile::onProcessFinished_slot(int exitCode, QProcess::ExitStatus exitSta
 
 void DDfufile::errorHandle_slot(QProcess::ProcessError error)
 {
-    qDebug() << "DDfufile: QProcess ERROR:" << error << m_process->errorString();
+    qDebug() << "DDfufile: QProcess ERROR:" << error;
     emit onProcessError_signal(start_id, error, "ProcessError");
 }
 

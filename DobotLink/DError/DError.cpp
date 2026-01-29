@@ -171,6 +171,14 @@ QString DError::getErrorMessage(int code)
         return "File can not write.";
     }
 
+    if (code == ERROR_DOWNLOAD_FIRMWARE){
+        return "download firmware fail.";
+    }else if (code == ERROR_FIRMWARE_NOT_EXIST) {
+        return "firmware file is not exist.";
+    } else if (code == ERROR_FIRMWARE_INVALID_DEVICE) {
+        return "firmware invalid device";
+    }
+
     if (code == ERROR_MOBDEBUG_START_FAILED) {
         return "modebug process start failed.";
     } else if (code == ERROR_MOBDEBUG_CLIENT_TIMEOUT) {

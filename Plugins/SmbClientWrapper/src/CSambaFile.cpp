@@ -2,6 +2,9 @@
 
 #include <fcntl.h>
 #include <memory>
+#include <chrono>
+#include <thread>
+#include <memory>
 
 #include "CSambaCore.h"
 
@@ -82,16 +85,29 @@ bool CSambaFile::Copy(const std::string& strOldPath, const std::string& strNewPa
     {
         return false;
     }
-    char szBuffer[1024];
 
-    int iRet = fr.Read(szBuffer, 1024);
-    while (iRet > 0)
+    const int iLimitedValue=3e6;
+    const int nBufferMaxSize = fr.m_fInfo.nSize>iLimitedValue?iLimitedValue:fr.m_fInfo.nSize;
+    std::unique_ptr<char[]> szBuffer(new char[nBufferMaxSize]);
+
+    int iTotalRead = fr.Read(szBuffer.get(), nBufferMaxSize);
+    while (iTotalRead > 0)
     {
-        if (fw.Write(szBuffer, iRet) != iRet)
+        int iTotalWrite = 0;
+        while (iTotalWrite < iTotalRead)
         {
-            return false;
+            int iw = fw.Write(szBuffer.get()+iTotalWrite, iTotalRead-iTotalWrite);
+            if (iw > 0)
+            {
+                iTotalWrite += iw;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            else
+            {
+                return false;
+            }
         }
-        iRet = fr.Read(szBuffer, 1024);
+        iTotalRead = fr.Read(szBuffer.get(), nBufferMaxSize);
     }
 
     return true;
@@ -108,6 +124,8 @@ bool CSambaFile::Open(const std::string& strPath, int iOpenMode)
         strPath.c_str(), iOpenMode);
 
     m_pSmbCtx = pctx;
+
+    m_fInfo.Clear();
 
     if (pctx)
     {
@@ -200,7 +218,7 @@ int CSambaFile::Read(char* pBuffer, int iSize)
 
 std::string CSambaFile::ReadAllText()
 {
-    if (!m_pClient || !m_pSmbCtx) return "";
+    if (!m_pClient || !m_pSmbCtx || 0==m_fInfo.nSize) return "";
 
     CSambaClient::CSmbSafeGuard guard(m_pClient);
     if (!m_pClient->GetSmbHandler()) return "";
@@ -214,14 +232,21 @@ std::string CSambaFile::ReadAllText()
         return "";
     }
 
+    const int iLimitedValue=3e6;
+    const int nBufferMaxSize = m_fInfo.nSize>iLimitedValue?iLimitedValue:m_fInfo.nSize;
     std::string strRet;
-    char szBuffer[1024] = "";
-    int iRet = CSambaCore::GetInstance().smb2_read(pctx, pfh, (uint8_t*)szBuffer, 1024);
-    while (iRet > 0)
+    strRet.reserve(m_fInfo.nSize+10);
+
+    std::unique_ptr<char[]> szBuffer(new char[nBufferMaxSize]);
+
+    uint64_t iTotalRead = 0;
+    int iRet = CSambaCore::GetInstance().smb2_read(pctx, pfh, (uint8_t*)szBuffer.get(), nBufferMaxSize);
+    while (iRet > 0 && iTotalRead < m_fInfo.nSize)
     {
-        strRet.append(szBuffer, iRet);
-        memset(szBuffer, 0, 1024);
-        iRet = CSambaCore::GetInstance().smb2_read(pctx, pfh, (uint8_t*)szBuffer, 1024);
+        iTotalRead += iRet;
+        strRet.append(szBuffer.get(), iRet);
+        iRet = CSambaCore::GetInstance().smb2_read(pctx, pfh, (uint8_t*)szBuffer.get(), nBufferMaxSize);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return strRet;
 }
@@ -265,6 +290,7 @@ bool CSambaFile::WriteAllText(const std::string& str)
         }
         psz += iRet;
         iSize -= iRet;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }while (iSize>0);
     return true;
 }

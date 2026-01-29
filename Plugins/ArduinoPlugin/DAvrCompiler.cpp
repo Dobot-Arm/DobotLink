@@ -219,6 +219,7 @@ void DAvrCompiler::startCompile()
     arguments << codeDir.absoluteFilePath("code.o");
 
     gppProcess->setArguments(arguments);
+    qDebug()<<"start g++ compiler******************************";
     gppProcess->start();
     qDebug() << gppProcess->program();
     qDebug() << gppProcess->arguments();
@@ -271,6 +272,7 @@ void DAvrCompiler::startCompile()
 
     gccProcess->setArguments(arguments);
     gccProcess->start();
+    qDebug()<<"start gcc compiler******************************";
     qDebug() << gccProcess->program();
     qDebug() << gccProcess->arguments();
 
@@ -288,6 +290,7 @@ void DAvrCompiler::startCompile()
 
     objcopyProcess->setArguments(arguments);
     objcopyProcess->start();
+    qDebug()<<"start objcopy compiler******************************";
     qDebug() << objcopyProcess->program();
     qDebug() << objcopyProcess->arguments();
 
@@ -301,7 +304,11 @@ void DAvrCompiler::startCompile()
 /* SLOT */
 void DAvrCompiler::onProcessReadyRead_slot()
 {
-
+    auto process = qobject_cast<QProcess *>(sender());
+    QString str = process->readAllStandardOutput();
+    QString strErr = process->readAllStandardOutput();
+    qDebug()<<process<<",===============read:"<<str;
+    qDebug()<<process<<",===============read:"<<strErr;
 }
 
 void DAvrCompiler::onProcessFinished_slot(int exitCode, QProcess::ExitStatus exitStatus)

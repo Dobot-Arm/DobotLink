@@ -35,6 +35,8 @@ Module::Module(QString basePort, QObject *parent) : QObject(parent), BasePort(ba
     m_crulManager = new CurlNetworkManager(this);
 #else
     m_manager = new QNetworkAccessManager(this);
+    m_managerExchange = new QNetworkAccessManager(this);
+    m_managerMove = new QNetworkAccessManager(this);
 #endif
 
     m_iHttpRequestTryTimes = 0;
@@ -102,10 +104,8 @@ int Module::_checkSearchFinish(QSharedPointer<QMap<QPair<QString, SearchType>,  
 
 bool Module::_handleSearchResult(QSharedPointer<QMap<QPair<QString, SearchType>,  QSharedPointer<SearchResult>>> searchTypeRes, const QString ip, const SearchType searchType, const QString &head, const QByteArray &receiveData)
 {
-    if (!head.contains("json")) {
-        qWarning() << "Invalid Content Type Header:" << head;
-        searchTypeRes->value(QPair<QString, SearchType>(ip, searchType))->state = SearchState::Failed;
-    } else if (receiveData.size() == 0) {
+    Q_UNUSED(head)
+    if (receiveData.size() == 0) {
         qWarning() << "Invalid Data:" << receiveData;
         searchTypeRes->value(QPair<QString, SearchType>(ip, searchType))->state = SearchState::Failed;
     } else {
@@ -131,6 +131,21 @@ bool Module::_handleSearchResult(QSharedPointer<QMap<QPair<QString, SearchType>,
     return false;
 }
 
+QNetworkAccessManager* Module::getNetAccessMgr(const QString &strUrl)
+{
+    if ("/protocol/exchange" == strUrl)
+    {
+        return m_managerExchange;
+    }
+    else if ("/interface/go" == strUrl || "/interface/goHome" == strUrl ||"/interface/goR" == strUrl
+             || "/interface/move" == strUrl || "/interface/moveJ" == strUrl ||"/interface/moveR" == strUrl
+             || "/panel/jog" == strUrl)
+    {
+        return m_managerMove;
+    }
+    return m_manager;
+}
+
 void Module::sendSearchRequest(const QString &url, const quint64 id)
 {
     //创建以ip为key搜索的结构体
@@ -151,9 +166,10 @@ void Module::sendSearchRequest(const QString &url, const quint64 id)
         searchTypeRes->insert(QPair<QString, SearchType>(ip, SambaFile), QSharedPointer<SearchResult>(new SearchResult()));
         searchTypeRes->insert(QPair<QString, SearchType>(ip, HttpApi), QSharedPointer<SearchResult>(new SearchResult()));
     }
-    if (m_manager->networkAccessible() != QNetworkAccessManager::Accessible)
+    QNetworkAccessManager* pNetMgr = getNetAccessMgr(url);
+    if (pNetMgr->networkAccessible() != QNetworkAccessManager::Accessible)
     {
-        m_manager->setNetworkAccessible(QNetworkAccessManager::Accessible);
+        pNetMgr->setNetworkAccessible(QNetworkAccessManager::Accessible);
     }
     foreach(QString ip, searchRes->keys()) {
         //先做http访问
@@ -164,13 +180,13 @@ void Module::sendSearchRequest(const QString &url, const quint64 id)
         QNetworkRequest request;
         request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
         request.setUrl(QUrl(_url));
-        QNetworkReply *reply = m_manager->get(request);
+        QNetworkReply *reply = pNetMgr->get(request);
 
         QTimer* pCheckHttpTimer = new QTimer(reply);
         pCheckHttpTimer->setInterval(2000);
         pCheckHttpTimer->setSingleShot(true);
         pCheckHttpTimer->start();
-        connect(pCheckHttpTimer, &QTimer::timeout, [this, searchTypeRes, ip, id, reply]() {
+        connect(pCheckHttpTimer, &QTimer::timeout, [this, searchTypeRes, ip, id, reply,pNetMgr]() {
             qDebug() << QString("[%1](id:%2) search timeout").arg(ip).arg(id);
             searchTypeRes->value(QPair<QString, SearchType>(ip, HttpApi))->state = SearchState::Failed;
             searchTypeRes->value(QPair<QString, SearchType>(ip, SambaFile))->state = SearchState::Failed;
@@ -188,7 +204,7 @@ void Module::sendSearchRequest(const QString &url, const quint64 id)
                     if (state == SearchState::Searching ||
                             state == SearchState::Success) return ;
                 }
-                m_manager->clearAccessCache();
+                pNetMgr->clearAccessCache();
             }
         });
 
@@ -276,11 +292,12 @@ void Module::sendGetRequest(const QString &url, const quint64 id, const QString 
     connect(reply, &CurlNetworkReply::finished_signal, this, &Module::receiveCurlData_slot);
     connect(reply, &CurlNetworkReply::onErrorOccured_signal, this, &Module::receiveCurlError_slot);
 #else
-    if (m_manager->networkAccessible() != QNetworkAccessManager::Accessible)
+    QNetworkAccessManager* pNetMgr = getNetAccessMgr(url);
+    if (pNetMgr->networkAccessible() != QNetworkAccessManager::Accessible)
     {
-        m_manager->setNetworkAccessible(QNetworkAccessManager::Accessible);
+        pNetMgr->setNetworkAccessible(QNetworkAccessManager::Accessible);
     }
-    QNetworkReply *reply = m_manager->get(QNetworkRequest(req_url));
+    QNetworkReply *reply = pNetMgr->get(QNetworkRequest(req_url));
     QTimer *timer = new QTimer(reply);
     timer->setSingleShot(true);
     timer->setInterval(CommDefaultTimeout * 1000);
@@ -292,43 +309,21 @@ void Module::sendGetRequest(const QString &url, const quint64 id, const QString 
         Q_UNUSED(api);
 
         if (reply->isRunning()) {
-            reply->disconnect();
             reply->abort();
-
-            /*reply->disconnect()后，receiveError_slot槽函数不再接收处理导致断开网络连接时无法判断设备已经失去连接。
-             *正常情况下，GetConnectionState接口响应很快的，可以理解为设备连接的心跳包。
-            */
-            if ("GetConnectionState" == api || "GetDobotStatus" == api)
-            {
-                ++m_iHttpRequestTryTimes;
-                if (m_iHttpRequestTryTimes >= 3)
-                {
-                    emit onGetConnectionStateOccuredError_signal(id);
-                    m_iHttpRequestTryTimes = 0;
-                }
-            }
-
-            int errCode = ERROR_HTTP_QT_TIMEOUT;
-            QString errMsg = DError::getErrorMessage(errCode);
-            qDebug() << __FUNCTION__ << errMsg;
-
-            if (nullptr == errorCallback)
-            {
-                emit onErrorOccured_signal(id, errCode, errMsg);
-            }
-            else
-            {
-                errorCallback(errCode, errMsg);
-            }
-
-            reply->deleteLater();
+            QString errMsg = DError::getErrorMessage(ERROR_HTTP_QT_TIMEOUT);
+            qDebug() <<"id:"<<id<<errMsg;
         }
     });
-    connect(reply, &QNetworkReply::finished, this, [this,reply,successCallback,errorCallback]{
-        receiveData_slot(reply,successCallback,errorCallback);
-    });
-    connect(reply, QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::error), this, [this,reply,errorCallback](QNetworkReply::NetworkError err){
-        receiveError_slot(err, reply,errorCallback);
+    connect(reply, &QNetworkReply::finished, this, [this,reply,timer,successCallback,errorCallback]{
+        if (timer->isActive())timer->stop();
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            receiveData_slot(reply,successCallback,errorCallback);
+        }
+        else
+        {
+            receiveError_slot(reply->error(), reply,errorCallback);
+        }
     });
 #endif
 
@@ -376,12 +371,13 @@ void Module::sendPostRequest(const QString &url, const QJsonValue &value, const 
         request.setHeader(QNetworkRequest::ContentLengthHeader, data_send.size());
     }
 
-    if (m_manager->networkAccessible() != QNetworkAccessManager::Accessible)
+    QNetworkAccessManager* pNetMgr = getNetAccessMgr(url);
+    if (pNetMgr->networkAccessible() != QNetworkAccessManager::Accessible)
     {
-        m_manager->setNetworkAccessible(QNetworkAccessManager::Accessible);
+        pNetMgr->setNetworkAccessible(QNetworkAccessManager::Accessible);
     }
 
-    QNetworkReply *reply = m_manager->post(request, data_send);
+    QNetworkReply *reply = pNetMgr->post(request, data_send);
     QTimer *timer = new QTimer(reply);
     timer->setSingleShot(true);
     timer->setInterval(realTimeout);
@@ -393,29 +389,21 @@ void Module::sendPostRequest(const QString &url, const QJsonValue &value, const 
         Q_UNUSED(api);
 
         if (reply->isRunning()) {
-            reply->disconnect();
             reply->abort();
-
-            int errCode = ERROR_HTTP_QT_TIMEOUT;
-            QString errMsg = DError::getErrorMessage(errCode);
-            qDebug() << __FUNCTION__ << errMsg;
-            if (nullptr == errorCallback)
-            {
-                emit onErrorOccured_signal(id, errCode, errMsg);
-            }
-            else
-            {
-                errorCallback(errCode, errMsg);
-            }
-
-            reply->deleteLater();
+            QString errMsg = DError::getErrorMessage(ERROR_HTTP_QT_TIMEOUT);
+            qDebug() <<"id:"<<id<< errMsg;
         }
     });
-    connect(reply, &QNetworkReply::finished, this, [this,reply,successCallback,errorCallback]{
-        receiveData_slot(reply,successCallback,errorCallback);
-    });
-    connect(reply, QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::error), this, [this,reply,errorCallback](QNetworkReply::NetworkError err){
-        receiveError_slot(err, reply,errorCallback);
+    connect(reply, &QNetworkReply::finished, this, [this,reply,timer,successCallback,errorCallback]{
+        if (timer->isActive())timer->stop();
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            receiveData_slot(reply,successCallback,errorCallback);
+        }
+        else
+        {
+            receiveError_slot(reply->error(), reply,errorCallback);
+        }
     });
 #endif
 
@@ -512,12 +500,6 @@ void Module::receiveData_slot(QNetworkReply *reply,const std::function<void(cons
 
     reply->deleteLater();
 
-    if (!head.contains("json")) {
-        qWarning() << "Invalid Content Type Header:" << head;
-        qWarning() << "Invalid Data:" << receiveData;
-        return;
-    }
-
     if ("GetConnectionState" == api || "GetDobotStatus" == api)
     {//对应的接口请求成功，则复位
         m_iHttpRequestTryTimes = 0;
@@ -603,7 +585,7 @@ void Module::receiveError_slot(QNetworkReply::NetworkError err,QNetworkReply *re
         }
     }
 
-    qDebug() << __FUNCTION__ << err << reply->errorString();
+    qDebug() <<"id:"<<id<< __FUNCTION__ << err << reply->errorString();
     int errCode = err + ERROR_HTTP_QT;
     if (nullptr == errorCallback)
     {

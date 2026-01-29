@@ -20,6 +20,9 @@ public:
     bool writeToBoxFile(QString code);
     void setDownloadParams(QString fileName, QString code, quint64 id);
     void run();
+
+    static bool isCanWriteCode(QString code);
+    static bool clearBoxSpace();
 signals:
     void onDownloadFinished_signal(quint64 id, bool isOk);
 

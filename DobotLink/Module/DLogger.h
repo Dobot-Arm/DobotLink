@@ -19,6 +19,8 @@ public:
     QList<QString> msgHead;
     QFile *logFile;
 
+    void createNewFileMaybe();
+
     void cleanLogs();
     void timecleanLogs();
     QByteArray getLog();
@@ -39,6 +41,9 @@ private:
 
     bool m_isLogging;
     QDir m_logPath;
+
+    QDateTime m_tmPreFileTime;//第一次开始记录，则用当前时间当做文件名，待到分割时用这个时间
+    bool isNextDay() const;
 };
 
 #endif // DLOGGER_H

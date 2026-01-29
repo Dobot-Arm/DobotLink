@@ -9,7 +9,7 @@
 const QString processName = "Mcuisp.exe";
 DMcuisp::DMcuisp(QObject *parent) : QObject(parent)
 {
-
+    m_process = nullptr;
 }
 
 DMcuisp::~DMcuisp()
@@ -122,6 +122,11 @@ void DMcuisp::startDownload(QString COM, quint64 start_id, bool is3DPrinter)
     downloadFirwareForLinux(COM);
 #else
     arguments << fwType << m_fileName << COM << "AutoStart";
+#ifdef Q_OS_WIN
+    arguments << QString::number(QCoreApplication::applicationPid());
+#elif defined (Q_OS_MAC)
+    arguments << QString::number(QCoreApplication::applicationPid());
+#endif
     m_process->setArguments(arguments);
     qDebug() << "program:" << m_process->program();
     qDebug() << "arguments:" << m_process->arguments();

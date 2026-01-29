@@ -6,14 +6,23 @@
 #include <QTime>
 #include <QDebug>
 #include <QtConcurrent>
+#include <QProcess>
 
 #include "../version.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <tlhelp32.h>
+#include <psapi.h>
+#include <processthreadsapi.h>
+#endif
 
 #define DEVICE_DLL_ERROR_BASE (120)
 
 const QString IndustrialRobotPlugin::PluginName = "IndustrialRobot";
 const QString IndustrialRobotPlugin::Version = VERSION_PLUGIN_INDUSTRIAL;
 
+QProcess* IndustrialRobotPlugin::m_pProcVRC = nullptr;
 IndustrialRobotPlugin::IndustrialRobotPlugin(QObject *parent) : DPluginInterface(parent)
 {
     m_device = new Device(this);
@@ -70,7 +79,7 @@ IndustrialRobotPlugin::IndustrialRobotPlugin(QObject *parent) : DPluginInterface
 
 IndustrialRobotPlugin::~IndustrialRobotPlugin()
 {
-
+    stopVirtualController();
 }
 
 QString IndustrialRobotPlugin::GetFirewallInRuleCmdUdp()
@@ -321,6 +330,7 @@ void IndustrialRobotPlugin::handleDobotLinkCommand(const QJsonObject &obj)
         if (method == "EXIT") {
             //... close all device...
             disconnectDobot();
+            stopVirtualController();
         } else if (method == "CloseWebSocket") {
             QJsonObject params = obj.value("params").toObject();
             quint16 port = static_cast<quint16>(params.value("WSport").toInt());
@@ -459,4 +469,94 @@ Device* IndustrialRobotPlugin::GetDeviceByPortNameAndWsPort(QString strPortName,
         }
     }
     return nullptr;
+}
+
+static void killVirtualControllerLuaExecutable()
+{
+#ifdef Q_OS_WIN
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cd("tool");dir.cd("controllerVR");
+    const QString strProgLua = QDir::toNativeSeparators(dir.absoluteFilePath("lua.exe")).toLower();
+
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (INVALID_HANDLE_VALUE == hSnapshot)
+    {
+        return ;
+    }
+    PROCESSENTRY32W pe32;
+    memset(&pe32, 0, sizeof(PROCESSENTRY32W));
+    pe32.dwSize = sizeof(PROCESSENTRY32W);
+    Process32FirstW(hSnapshot, &pe32);
+    while (Process32NextW(hSnapshot, &pe32))
+    {
+        QString strLua = QString::fromWCharArray(pe32.szExeFile);
+        if (strLua.compare("lua.exe", Qt::CaseInsensitive)!=0)
+        {
+            continue;
+        }
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe32.th32ProcessID);
+        if (NULL == hProcess)
+        {
+            continue;
+        }
+        wchar_t szFilePath[1024]=L"";
+        GetModuleFileNameExW(hProcess, 0, szFilePath, 1023);
+        strLua = QDir::toNativeSeparators(QString::fromWCharArray(szFilePath)).toLower();
+        CloseHandle(hProcess);
+        if (strProgLua == strLua)
+        {
+            TerminateProcess(hProcess,0);
+            break;
+        }
+    }
+    CloseHandle(hSnapshot);
+#endif
+    return ;
+}
+
+bool IndustrialRobotPlugin::startVirtualController()
+{
+    killVirtualControllerLuaExecutable();
+    if (!m_pProcVRC)
+    {
+        m_pProcVRC = new QProcess();
+        connect(m_pProcVRC, &QProcess::errorOccurred, m_pProcVRC, [](QProcess::ProcessError error){
+            qDebug()<<"virtual control errorOccured:"<<error;
+        });
+        connect(m_pProcVRC, QOverload<int,QProcess::ExitStatus>::of(&QProcess::finished), m_pProcVRC, [](int exitCode, QProcess::ExitStatus exitStatus){
+            qDebug()<<"virtual control exitCode:"<<exitCode<<",exitStatus:"<<exitStatus;
+        });
+        QDir dir(QCoreApplication::applicationDirPath());
+        dir.cd("tool");dir.cd("controllerVR");
+        QString strProg = dir.absoluteFilePath("app.exe");
+        m_pProcVRC->setProgram(strProg);
+    }
+    if (m_pProcVRC->state() != QProcess::Running)
+    {
+        m_pProcVRC->start();
+        return m_pProcVRC->waitForStarted(3000);
+    }
+    return true;
+}
+
+void IndustrialRobotPlugin::stopVirtualController()
+{
+    if (m_pProcVRC)
+    {
+        m_pProcVRC->kill();
+        m_pProcVRC->deleteLater();
+        m_pProcVRC = nullptr;
+    }
+}
+
+QString IndustrialRobotPlugin::getVirtualControllerRootPath()
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cd("tool");dir.cd("controllerVR");
+    return dir.absolutePath();
+}
+
+bool IndustrialRobotPlugin::isVirtualController(const QString &strIp)
+{
+    return strIp.compare("127.0.0.1")==0;
 }

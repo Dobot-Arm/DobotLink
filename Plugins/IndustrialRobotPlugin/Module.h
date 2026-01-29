@@ -90,10 +90,13 @@ signals:
 private:
     inline int _checkSearchFinish(QSharedPointer<QMap<QPair<QString, SearchType>, QSharedPointer<SearchResult>>> searchTypeRes, quint64 id);
     inline bool _handleSearchResult(QSharedPointer<QMap<QPair<QString, SearchType>,  QSharedPointer<SearchResult>>> searchTypeRes, const QString ip, const SearchType searchType, const QString &head, const QByteArray &receiveData);
+    QNetworkAccessManager* getNetAccessMgr(const QString& strUrl);
 #ifdef USE_CURL_LIB
     CurlNetworkManager *m_crulManager;
 #else
     QNetworkAccessManager *m_manager;
+    QNetworkAccessManager *m_managerExchange;
+    QNetworkAccessManager *m_managerMove;
 #endif
 
     QString m_ip;

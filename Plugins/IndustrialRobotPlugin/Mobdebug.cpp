@@ -26,6 +26,61 @@ static QUdpSocket *g_pUdpBlockHighlight = nullptr;
 
 static QSet<Mobdebug*> g_AllMobdebug;
 
+static bool isCanConvert2Utf8(const QByteArray& arr)
+{
+    int nBytes = 0;//UFT8可用1-6个字节编码,ASCII用一个字节
+    bool bAllAscii = true;
+    for (int i=0; i<arr.size(); ++i)
+    {
+        unsigned char chr = static_cast<unsigned char>(arr[i]);
+        //判断是否ASCII编码,如果不是,说明有可能是UTF8,ASCII用7位编码,最高位标记为0,0xxxxxxx
+        if (nBytes == 0 && (chr & 0x80) != 0) bAllAscii = false;
+        if (nBytes == 0)
+        {
+            //如果不是ASCII码,应该是多字节符,计算字节数
+            if (chr >= 0x80)
+            {
+                if (chr >= 0xFC && chr <= 0xFD) nBytes = 6;
+                else if (chr >= 0xF8) nBytes = 5;
+                else if (chr >= 0xF0) nBytes = 4;
+                else if (chr >= 0xE0) nBytes = 3;
+                else if (chr >= 0xC0) nBytes = 2;
+                else return false;
+                nBytes--;
+            }
+        }
+        else
+        {
+            //多字节符的非首字节,应为 10xxxxxx
+            if ((chr & 0xC0) != 0x80) return false;
+            //减到为零为止
+            nBytes--;
+        }
+    }
+    //违返UTF8编码规则
+    if (nBytes != 0) return false;
+    if (bAllAscii)
+    { //如果全部都是ASCII, 也是UTF8
+        return true;
+    }
+    return true;
+}
+
+/*在脚本编程中，udp接收来的消息，可能包含中文字符，且不是utf8编码，
+ * 结果这条消息内容打印到DobotLink界面上时，引起崩溃，这个是Qt本身的bug。
+ * bugReport: https://bugreports.qt.io/browse/QTBUG-57180
+ * 为了解决这个问题，折中方式，可以先判断接收到的内容是否为Utf8，不是就写成乱码
+*/
+static QString bytesToUtf8(const QByteArray& arr)
+{
+    if (arr.isEmpty()) return "";
+    if (isCanConvert2Utf8(arr))
+    {
+        return QString::fromUtf8(arr);
+    }
+    return QString(5, '?');
+}
+
 Mobdebug::Mobdebug(QObject *parent) : QObject(parent)
 {
     m_state = MODEBUG_IDLE;
@@ -236,7 +291,7 @@ bool Mobdebug::start(quint64 id)
 
 bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
 {
-    bool bOk = false;
+    bool bOk = true;
 
     if (QUdpSocket::SocketState::BoundState != g_pUdpPrint->state())
     {
@@ -248,7 +303,7 @@ bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
             qDebug() << "bind 5000 sucess.";
         } else {
             qDebug() << "bind 5000 failed.";
-            goto exit_flag;
+            bOk = false;
         }
     }
 
@@ -261,7 +316,7 @@ bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
             qDebug() << "bind 5001 sucess.";
         } else {
             qDebug() << "bind 5001 failed.";
-            goto exit_flag;
+            bOk = false;
         }
     }
 
@@ -274,7 +329,7 @@ bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
             qDebug() << "bind 5002 sucess.";
         } else {
             qDebug() << "bind 5002 failed.";
-            goto exit_flag;
+            bOk = false;
         }
     }
 
@@ -287,7 +342,7 @@ bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
             qDebug() << "bind 5003 sucess.";
         } else {
             qDebug() << "bind 5003 failed.";
-            goto exit_flag;
+            bOk = false;
         }
     }
 
@@ -300,14 +355,23 @@ bool Mobdebug::udpOpen(const QString& strDeviceIpAddress)
             qDebug() << "bind 5004 sucess.";
         } else {
             qDebug() << "bind 5004 failed.";
-            goto exit_flag;
+            bOk = false;
         }
     }
-    bOk = true;
 
-exit_flag:
-    if (!bOk)
-    {//其中某一个打开失败了，则全都关闭
+    //1. 成功打开了所有udp后，就需要将 this保存起来，当closeudp时，就要删掉this，当所有this都删完了，就真的关掉所有udp
+    //2. udp收到消息时，要判断ip是否为 m_strDeviceIpAddress，如果是，则消息发出去，否则消息不发，不然就出现消息串台了。
+    m_strDeviceIpAddress = strDeviceIpAddress;
+    g_AllMobdebug.insert(this);
+
+    return bOk;
+}
+
+void Mobdebug::udpClose()
+{
+    g_AllMobdebug.remove(this);
+    if (g_AllMobdebug.isEmpty())
+    {
         if (QUdpSocket::SocketState::BoundState == g_pUdpPrint->state())
         {
             g_pUdpPrint->abort();
@@ -328,28 +392,6 @@ exit_flag:
         {
             g_pUdpBlockHighlight->abort();
         }
-    }
-    else
-    {
-        m_strDeviceIpAddress = strDeviceIpAddress;
-        g_AllMobdebug.insert(this);
-    }
-
-    //1. 成功打开了所有udp后，就需要将 this保存起来，当closeudp时，就要删掉this，当所有this都删完了，就真的关掉所有udp
-    //2. udp收到消息时，要判断ip是否为 m_strDeviceIpAddress，如果是，则消息发出去，否则消息不发，不然就出现消息串台了。
-    return bOk;
-}
-
-void Mobdebug::udpClose()
-{
-    g_AllMobdebug.remove(this);
-    if (g_AllMobdebug.isEmpty())
-    {
-        g_pUdpPrint->abort();
-        g_pUdp1Cursor->abort();
-        g_pUdp2Cursor->abort();
-        g_pUdpSpecial->abort();
-        g_pUdpBlockHighlight->abort();
     }
 
     m_strDeviceIpAddress = "";
@@ -633,7 +675,7 @@ void Mobdebug::readPendingClientMsg_slot()
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QString message = datagram.data();
+            QString message = bytesToUtf8(datagram.data());
             QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
             quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
@@ -664,7 +706,7 @@ void Mobdebug::readPending1stCursorMsg_slot()
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QString message = datagram.data();
+            QString message = bytesToUtf8(datagram.data());
             QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
             quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
@@ -694,7 +736,7 @@ void Mobdebug::readPending2ndCursorMsg_slot()
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QString message = datagram.data();
+            QString message = bytesToUtf8(datagram.data());
             QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
             quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
@@ -724,7 +766,7 @@ void Mobdebug::readPendingSpecialMsg_slot()
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QString message = datagram.data();
+            QString message = bytesToUtf8(datagram.data());
             QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
             quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
@@ -754,7 +796,7 @@ void Mobdebug::readBlockHighlightId_slot()
     if (socket) {
         while (socket->hasPendingDatagrams()) {
             QNetworkDatagram datagram = socket->receiveDatagram();
-            QString message = datagram.data();
+            QString message = bytesToUtf8(datagram.data());
             QHostAddress host = QHostAddress(datagram.senderAddress().toIPv4Address());
             quint16 iPort = datagram.senderPort();
             qDebug() << "ip" << host.toString();
@@ -804,3 +846,5 @@ void Mobdebug::_killProcess()
 #endif
     m_process->terminate();
 }
+
+

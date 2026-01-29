@@ -17,7 +17,7 @@
 const QString MG400_DEFAULT_IP = "192.168.1.6";
 const QString M1_DEFAULT_IP = "192.168.9.1";
 const QString BASE_PORT = "22000";
-const int DEFAULT_TIMEOUT = 2000;
+const int DEFAULT_TIMEOUT = 5000;
 
 //递归终止
 QString __splicing()
@@ -62,6 +62,26 @@ FileControll::~FileControll()
     m_pool->Clear(this);
 }
 
+QString FileControll::joinPath(const QStringList& allPath)
+{
+    if (allPath.isEmpty()) return "";
+    QStringList lstPath(allPath);
+#ifdef __arm__
+    Q_UNUSED(ip)
+    QString path("/dobot/userdata");
+#else
+    QString path = QString("\\\\%1").arg(lstPath.takeFirst());
+#endif
+    foreach(QString str, lstPath)
+    {
+        if (!str.startsWith("/")) {
+            str = "/" + str;
+        }
+        path.append(str);
+    }
+    return path;
+}
+
 void FileControll::closureHandler(BaseThread *thread, quint64 id, quint32 timeout)
 {
     timeout = timeout ? timeout : DEFAULT_TIMEOUT;
@@ -102,7 +122,7 @@ void FileControll::closureHandler(BaseThread *thread, quint64 id, quint32 timeou
 
 void FileControll::readFile(const quint64 id, const QString &fileName, quint32 timeout)
 {
-    QString r_fileName =__getDobotPath(m_ip, fileName);
+    QString r_fileName =joinPath({m_ip, fileName});
 
     ReadThread *thread(new ReadThread(id, r_fileName));
     closureHandler(thread, id, timeout);
@@ -110,7 +130,7 @@ void FileControll::readFile(const quint64 id, const QString &fileName, quint32 t
 
 void FileControll::writeFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
 
     WriteThread *thread(new WriteThread(id, w_fileName, value));
     closureHandler(thread, id, timeout);
@@ -118,7 +138,7 @@ void FileControll::writeFile(const quint64 id, const QString &fileName, const QJ
 
 void FileControll::writeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
     qDebug() << __FUNCTION__ << w_fileName;
 
     WriteThread *thread(new WriteThread(id, w_fileName, content));
@@ -127,7 +147,7 @@ void FileControll::writeFile(const quint64 id, const QString &fileName, const QS
 
 void FileControll::changeFile(const quint64 id, const QString &fileName, const QString &key, const QJsonValue &value, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
     qDebug() << __FUNCTION__ << w_fileName;
 
     ChangeFileThread *thread(new ChangeFileThread(id, w_fileName, key, value));
@@ -137,7 +157,7 @@ void FileControll::changeFile(const quint64 id, const QString &fileName, const Q
 
 void FileControll::newFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
     qDebug() << __FUNCTION__ << w_fileName;
 
     NewFileThread *thread(new NewFileThread(id, w_fileName, value));
@@ -146,7 +166,7 @@ void FileControll::newFile(const quint64 id, const QString &fileName, const QJso
 
 void FileControll::newFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
     qDebug() << __FUNCTION__ << w_fileName;
 
     NewFileThread *thread(new NewFileThread(id, w_fileName, content));
@@ -155,7 +175,7 @@ void FileControll::newFile(const quint64 id, const QString &fileName, const QStr
 
 void FileControll::decodeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
-    QString w_fileName =__getDobotPath(m_ip, fileName);
+    QString w_fileName =joinPath({m_ip, fileName});
     qDebug() << __FUNCTION__ << w_fileName;
 
     DecodeFileThread *thread(new DecodeFileThread(id, w_fileName, content));
@@ -165,7 +185,7 @@ void FileControll::decodeFile(const quint64 id, const QString &fileName, const Q
 void FileControll::newFolder(const quint64 id, const QString &url, const QString &folderName, quint32 timeout)
 {
     QDir dir;
-    dir.setPath(__getDobotPath(m_ip, url));
+    dir.setPath(joinPath({m_ip, url}));
     qDebug() << __FUNCTION__ << dir;
 
     NewFolderThread *thread(new NewFolderThread(id, url, folderName, dir));
@@ -174,7 +194,7 @@ void FileControll::newFolder(const quint64 id, const QString &url, const QString
 
 void FileControll::newFolderRecursive(const quint64 id, const QString &strSubDirRelative, quint32 timeout)
 {
-    QString str = __getDobotPath(m_ip, strSubDirRelative);
+    QString str = joinPath({m_ip, strSubDirRelative});
     if (!str.endsWith('/'))
     {
         str += '/';
@@ -187,8 +207,8 @@ void FileControll::newFolderRecursive(const quint64 id, const QString &strSubDir
 
 void FileControll::renameFolder(const quint64 id, const QString &folderName, const QString &newfolderName, quint32 timeout)
 {
-    QString re_folderName =__getDobotPath(m_ip, folderName);
-    QString ne_folderName =__getDobotPath(m_ip, newfolderName);
+    QString re_folderName =joinPath({m_ip, folderName});
+    QString ne_folderName =joinPath({m_ip, newfolderName});
     qDebug() << __FUNCTION__ << re_folderName;
 
     RenameFolderThread *thread(new RenameFolderThread(id, re_folderName, ne_folderName));
@@ -198,9 +218,9 @@ void FileControll::renameFolder(const quint64 id, const QString &folderName, con
 void FileControll::copyFolder(const quint64 id, const QString &url, const QString &folderName, const QString &newfolderName, quint32 timeout)
 {
     QDir dir, fromDir, toDir;
-    dir.setPath(__getDobotPath(m_ip, url));
-    fromDir.setPath(__getDobotPath(m_ip, url, folderName));
-    toDir.setPath(__getDobotPath(m_ip, url, newfolderName));
+    dir.setPath(joinPath({m_ip, url}));
+    fromDir.setPath(joinPath({m_ip, url, folderName}));
+    toDir.setPath(joinPath({m_ip, url, newfolderName}));
 
     CopyFolderThread *thread(new CopyFolderThread(id, dir, fromDir, toDir, folderName, newfolderName));
     closureHandler(thread, id, timeout);
@@ -209,8 +229,8 @@ void FileControll::copyFolder(const quint64 id, const QString &url, const QStrin
 void FileControll::deleteFolder(const quint64 id, const QString &url, const QString &folderName, quint32 timeout)
 {
     QDir dir;
-    QString re_folderName =__getDobotPath(m_ip, url, folderName);
-    dir.setPath(__getDobotPath(m_ip, url));
+    QString re_folderName =joinPath({m_ip, url, folderName});
+    dir.setPath(joinPath({m_ip, url}));
 
     DeleteFolderThread *thread(new DeleteFolderThread(id, url, folderName, re_folderName, dir));
     closureHandler(thread, id, timeout);
@@ -222,18 +242,18 @@ void FileControll::setIpAddress(const QString &ip)
 }
 
 
-void FileControll::readFolder(const quint64 id, const QString &folderName, quint32 timeout)
+void FileControll::readFolder(const quint64 id, const QString &folderName, quint32 timeout,bool bIsOnlyFolder)
 {
-    QString r_folderName = __getDobotPath(m_ip, folderName);
+    QString r_folderName = joinPath({m_ip, folderName});
     qDebug() << __FUNCTION__ << r_folderName;
-    ReadFolderThread *thread(new ReadFolderThread(id, r_folderName));
+    ReadFolderThread *thread(new ReadFolderThread(id, r_folderName,bIsOnlyFolder));
     closureHandler(thread, id, timeout);
 }
 
 void FileControll::getFullFileNameList(const quint64 id, const QString& strDir,
                          const QStringList& lstFileNameFilter, int iDeepth, quint32 nTimeoutMillseconds)
 {
-    QString strDirectory =__getDobotPath(m_ip, strDir);
+    QString strDirectory =joinPath({m_ip, strDir});
 
     auto pFileThread = new CGetFileListThread();
     pFileThread->SetId(id);
@@ -246,21 +266,21 @@ void FileControll::getFullFileNameList(const quint64 id, const QString& strDir,
 
 void FileControll::DeleteFileName(const quint64 id, const QStringList& delFiles,quint32 nTimeoutMillseconds)
 {
-    QString strDirectory =__getDobotPath(m_ip);
+    QString strDirectory =joinPath({m_ip});
     DeleteFilesThread *thread(new DeleteFilesThread(id, strDirectory, delFiles));
     closureHandler(thread, id, nTimeoutMillseconds);
 }
 
 void FileControll::pathIsExist(const quint64 id, const QString &path, quint32 timeout)
 {
-    QString r_fileName =__getDobotPath(m_ip, path);
+    QString r_fileName =joinPath({m_ip, path});
     PathIsExistThread *thread(new PathIsExistThread(id, r_fileName));
     closureHandler(thread, id, timeout);
 }
 
 void FileControll::copyFileFromLocaleToSmb(const quint64 id, const QString& strLocaleFile, const QString& strSmbFile, bool bIsTruncate, quint32 timeout)
 {
-    QString strRemoteFile =__getDobotPath(m_ip, strSmbFile);
+    QString strRemoteFile =joinPath({m_ip, strSmbFile});
     QFileInfo info(strLocaleFile);
     if (0 == timeout)
     {
@@ -281,3 +301,6 @@ void FileControll::copyFileFromLocaleToSmb(const quint64 id, const QString& strL
     thread->setTruncate(bIsTruncate);
     closureHandler(thread, id, timeout);
 }
+
+
+

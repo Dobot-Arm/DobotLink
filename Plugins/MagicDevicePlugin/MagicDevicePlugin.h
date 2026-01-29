@@ -71,6 +71,7 @@ private:
     quint64 m_handlingid;
 #ifndef __wasm__
     QUdpSocket *m_udpSocket;
+    QUdpSocket *m_udpSocketUSR;
 #endif
     QMap<QString, QString> m_ipAndBroadcastMap;
     QMap<QString, QString> m_m1deviceMap;
@@ -106,6 +107,8 @@ private:
     void _pSetCommuTimeout(MagicDevice *device, const DRequestPacket &packet);
 
     void _handleDownloadCmd(MagicDevice *device, const DRequestPacket &packet);
+    void _handleCheckBoxSpaceCmd(MagicDevice *device, const DRequestPacket &packet);
+    void _handleClearBoxSpaceCmd(MagicDevice *device, const DRequestPacket &packet);
 
     void _closeAllDevice();
 
@@ -135,6 +138,7 @@ private slots:
     void _handleReceiveMessage_slot(quint64 id, QString cmd, int res, QJsonValue params);
     void _handleDownloadFinished_slot(quint64 id, bool isOk);
     void _onUdpReadyRead_slot();
+    void onUdpUSRReadyRead_slot();
 };
 
 #endif // MAGICDEVICEPLUGIN_H

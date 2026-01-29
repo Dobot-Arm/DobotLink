@@ -156,6 +156,28 @@ bool CSambaClient::IsConnected()
     return false;
 }
 
+int CSambaClient::GetMaxReadSize()
+{
+    CSmbSafeGuard guard(this);
+    if (m_pSmbCtx)
+    {
+        struct smb2_context* pctx = (struct smb2_context*)m_pSmbCtx;
+        return CSambaCore::GetInstance().smb2_get_max_read_size(pctx);
+    }
+    return 0;
+}
+
+int CSambaClient::GetMaxWriteSize()
+{
+    CSmbSafeGuard guard(this);
+    if (m_pSmbCtx)
+    {
+        struct smb2_context* pctx = (struct smb2_context*)m_pSmbCtx;
+        return CSambaCore::GetInstance().smb2_get_max_write_size(pctx);
+    }
+    return 0;
+}
+
 void CSambaClient::SetErrorMsg(int iRetCode, const std::string& str)
 {
     CSmbSafeGuard guard(this);

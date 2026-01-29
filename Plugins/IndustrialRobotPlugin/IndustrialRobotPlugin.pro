@@ -46,6 +46,7 @@ SOURCES += \
     Device.cpp \
     FileControll.cpp \
     FileControllSmb.cpp \
+    FileControllVirtual.cpp \
     IOThread.cpp \
     IOThreadSmb.cpp \
     IndustrialRobotPlugin.cpp \
@@ -60,6 +61,7 @@ HEADERS += \
     Device.h \
     FileControll.h \
     FileControllSmb.h \
+    FileControllVirtual.h \
     IOThread.h \
     IOThreadSmb.h \
     IndustrialRobotPlugin.h \
@@ -88,7 +90,7 @@ win32{
 CONFIG(release, debug|release): LIBS += -L$$PWD/../../$${MY_OUTPUT_DIR}/ -lDPluginInterface
 else:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../$${MY_OUTPUT_DIR}_d/ -lDPluginInterface_d
 
-LIBS += -lws2_32
+LIBS += -lws2_32 -lPsapi
 }
 
 macx {

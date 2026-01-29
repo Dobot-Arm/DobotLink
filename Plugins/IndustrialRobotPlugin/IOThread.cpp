@@ -23,15 +23,23 @@ void ReadThread::exec()
     QJsonValue value;
     QFileInfo info(file);
     if (!info.exists()) {
-        qDebug() << "file don't exist." << file;
+        qDebug() << "file don't exist." << file<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_NOT_EXIST);
     } else if (!file.open(QFile::ReadOnly)) {
-        qDebug() << "file cannot open." << file.errorString();
+        qDebug() << m_fileName<<"file cannot open." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
     } else {
         QByteArray data = file.readAll();
         file.close();
-        finish(NOERROR, data);
+
+        qint64 createTime = info.birthTime().toMSecsSinceEpoch();
+        qint64 lastModifyTime = info.lastModified().toMSecsSinceEpoch();
+        QJsonObject objTime;
+        objTime.insert("createTimestamp", createTime);
+        objTime.insert("lastModifyTimestamp", lastModifyTime);
+
+        finish(NOERROR, data,objTime);
+        qDebug() << m_fileName<<"file read ok, id:"<<m_id;
     }
 }
 
@@ -67,15 +75,16 @@ void WriteThread::exec()
 {
     QFile file(m_fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qDebug() << file << "file cannot open." << file.errorString();
+        qDebug() << file << "file cannot open." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
     } else if (file.write(m_bytes) == -1) {
         file.close();
-        qDebug() << file << "file cannot write." << file.errorString();
+        qDebug() << file << "file cannot write." << file.errorString()<<" id:"<<m_id;
         finish( ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
     } else {
         file.close();
         finish(NOERROR);
+        qDebug() << m_fileName<<"file write ok, id:"<<m_id;
     }
 }
 
@@ -99,13 +108,27 @@ void ChangeFileThread::exec()
 
     QFileInfo info(file);
     if (!info.exists()) {
-        qDebug() << "file don't exist." << file;
+        qDebug() << "file don't exist." << file<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_NOT_EXIST);
-    } else if (!file.open(QIODevice::ReadWrite)) {
-        qDebug() << file << "file cannot open." << file.errorString();
+    } else if (!file.open(QIODevice::ReadOnly)) {
+        qDebug() << file << "file cannot open." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
     } else {
-        QJsonDocument jdc(QJsonDocument::fromJson(file.readAll()));
+        QJsonParseError err;
+        QJsonDocument jdc = QJsonDocument::fromJson(file.readAll(), &err);
+        if (err.error != QJsonParseError::NoError || !jdc.isObject())
+        {
+            qDebug() << file << "file content is not json object." << err.errorString()<<" id:"<<m_id;
+            file.close();
+            finish(ERROR_INDUSTRY_JSONOBJECT);
+            return ;
+        }
+        file.close();
+        if (!file.open(QIODevice::WriteOnly|QIODevice::Truncate)) {
+            qDebug() << file << "file cannot open&truncate." << file.errorString()<<" id:"<<m_id;
+            finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
+        }
+
         QJsonObject obj = jdc.object();
         //修改key对应的value
         obj[m_key] = m_value;
@@ -114,11 +137,12 @@ void ChangeFileThread::exec()
 
         if (file.write(jdc.toJson()) == -1) {
             file.close();
-            qDebug() << file << "file cannot write." << file.errorString();
+            qDebug() << file << "file cannot write." << file.errorString()<<" id:"<<m_id;
             finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
         } else {
             file.close();
-            finish(NOERROR);
+            finish(NOERROR,QByteArray(),obj);
+            qDebug() << m_fileName<<"file change ok, id:"<<m_id;
         }
     }
 }
@@ -155,15 +179,16 @@ void NewFileThread::exec()
 {
     QFile file(m_fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qDebug() << "file cannot open." << file.errorString();
+        qDebug() << m_fileName<<"file cannot open." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
     } else if (file.write(m_bytes) == -1) {
         file.close();
-        qDebug() << file << "file cannot write." << file.errorString();
+        qDebug() << file << "file cannot write." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
     } else {
         file.close();
         finish(NOERROR);
+        qDebug() << m_fileName<<"file create ok, id:"<<m_id;
     }
 }
 
@@ -183,15 +208,16 @@ void DecodeFileThread::exec()
     QByteArray array(m_content.toUtf8());
     QFile file(m_fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qDebug() << "file cannot open." << file.errorString();
+        qDebug() << m_fileName<<"file cannot open." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
     } else if (file.write(QByteArray::fromBase64(array)) == -1) {
         file.close();
-        qDebug() << "file cannot write." << file.errorString();
+        qDebug() << m_fileName<<"file cannot write." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_WRITE);
     } else {
         file.close();
         finish(NOERROR);
+        qDebug() << m_fileName<<"file decode ok, id:"<<m_id;
     }
 }
 
@@ -211,13 +237,14 @@ NewFolderThread::NewFolderThread(
 void NewFolderThread::exec()
 {
     if (m_dir.exists(m_folderName)) {
-        qDebug() << "folder already exist." << m_dir;
+        qDebug() << "folder already exist." << m_dir<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_ALREADY_EXIST);
     } else if (!m_dir.mkdir(m_folderName)) {
-        qDebug() << "folder cannot create." << m_dir;
+        qDebug() << "folder cannot create." << m_dir<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
     } else {
         finish(NOERROR);
+        qDebug() << m_dir<<"folder create ok, id:"<<m_id;
     }
 }
 
@@ -234,10 +261,11 @@ void CreateDirThread::exec()
 {
     QDir dir;
     if (!dir.mkpath(m_strDir)) {
-        qDebug() << "folder cannot create." << m_strDir;
+        qDebug() << "folder cannot create." << m_strDir<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
     } else {
         finish(NOERROR);
+        qDebug() << m_strDir<<"dir create ok, id:"<<m_id;
     }
 }
 
@@ -258,22 +286,25 @@ void RenameFolderThread::exec()
     if (!file.exists()){
         finish(ERROR_INDUSTRY_FOLDER_NOT_EXIST);
     } else if (file.isOpen()) {
-        qDebug() << file << "file is open, please close it." << file.errorString();
+        qDebug() << file << "file is open, please close it." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_HAD_OPENED);
     } else if (!file.rename(m_newfolderName)) {
-        qDebug() << file << "file cannot rename." << file.errorString();
+        qDebug() << file << "file cannot rename." << file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_RENAME);
     } else {
         finish(NOERROR);
+        qDebug() << file << "folder rename ok, id:"<<m_id;
     }
 }
 
 ReadFolderThread::ReadFolderThread(
         const quint64 id,
         const QString &folderName,
+        bool bIsOnlyFolder,
         QObject *parent):
     BaseThread(id, parent),
-    m_folderName(folderName)
+    m_folderName(folderName),
+    m_bIsOnlyFolder(bIsOnlyFolder)
 {
 }
 
@@ -289,7 +320,17 @@ void ReadFolderThread::exec()
     for (int i=0; i<fileInfo.count(); i++) {
         name = fileInfo.at(i).fileName();
         time = fileInfo.at(i).lastModified();
-        result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+        if (m_bIsOnlyFolder)
+        {
+            if (fileInfo.at(i).isDir())
+            {
+                result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+            }
+        }
+        else
+        {
+            result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+        }
     }
     if (fileInfo.count()>=2){
         result.remove(".");
@@ -321,12 +362,16 @@ void CopyFolderThread::exec()
 
     if (!m_fromDir.exists()) {
         finish(ERROR_INDUSTRY_FOLDER_NOT_EXIST);
+        qDebug() << m_fromDir<<"folder not exist, id:"<<m_id;
     } else if (m_dir.exists(m_newfolderName)){
         finish(ERROR_INDUSTRY_FOLDER_ALREADY_EXIST);
+        qDebug() << m_dir<<"folder not exist, id:"<<m_id;
     } else if (!m_dir.mkdir(m_newfolderName)) {
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_CREATE);
+        qDebug() << m_dir<<"folder make error, id:"<<m_id;
     } else if (file.isOpen()) {
         finish(ERROR_INDUSTRY_FILE_HAD_OPENED);
+        qDebug() << file << "folder open error, id:"<<m_id;
     } else {
         QFileInfoList fileInfoList = m_fromDir.entryInfoList();
         foreach(QFileInfo fileInfo, fileInfoList)
@@ -338,12 +383,13 @@ void CopyFolderThread::exec()
                 qDebug() << fileInfo.fileName();
                 qDebug() << fileInfo.filePath();
                 qDebug() << m_toDir.filePath(fileInfo.fileName());
-                qDebug() << "file cannot copy";
+                qDebug() << "file cannot copy"<<" id:"<<m_id;
                 finish(ERROR_INDUSTRY_FILE_CAN_NOT_COPY);
                 return;
             }
         }
         finish(NOERROR);
+        qDebug() << "folder copy ok, id:"<<m_id;
     }
 }
 
@@ -368,14 +414,19 @@ void DeleteFolderThread::exec()
 
     if (!m_dir.exists(m_folderName)) {
         finish(ERROR_INDUSTRY_FOLDER_NOT_EXIST);
+        qDebug() << m_dir<<"folder not exist, id:"<<m_id;
     } else if (file.isOpen()) {
         finish(ERROR_INDUSTRY_FILE_HAD_OPENED);
+        qDebug() << file<<"folder is opened, id:"<<m_id;
     } else if (!m_dir.cd(m_folderName)) {
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_ENTER);
+        qDebug() << m_dir<<"folder cd failed, id:"<<m_id;
     } else if(!m_dir.removeRecursively()) {
         finish(ERROR_INDUSTRY_FOLDER_CAN_NOT_REMOVE);
+        qDebug() << m_dir<<"folder remove failed, id:"<<m_id;
     } else {
         finish(NOERROR);
+        qDebug() << m_dir<<"folder delete ok, id:"<<m_id;
     }
 }
 
@@ -479,10 +530,11 @@ void DeleteFilesThread::exec()
         QFile file(m_strUrl+strFile);
         if (!file.remove())
         {
-            qDebug()<<"delete failed:"<<file.fileName()<<file.errorString();
+            qDebug()<<"delete failed:"<<file.fileName()<<file.errorString()<<" id:"<<m_id;
         }
     }
     finish(NOERROR);
+    qDebug() << "delete all files ok, id:"<<m_id;
 }
 
 PathIsExistThread::PathIsExistThread(
@@ -502,7 +554,7 @@ void PathIsExistThread::exec()
     QJsonObject obj;
     obj.insert("exist",bOk);
     obj.insert("isFile",info.isFile());
-
+    obj.insert("fileSize",bOk?info.size():0);
     finish(NOERROR, QByteArray(), obj);
 }
 
@@ -522,7 +574,7 @@ void CopyFileLocaleToSMBThread::exec()
     QFile file(m_strLocalFile);
     if (!file.open(QFile::ReadOnly))
     {
-        qDebug() << m_strLocalFile << "file cannot open,"<<file.errorString();
+        qDebug() << m_strLocalFile << "file cannot open,"<<file.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
@@ -539,7 +591,7 @@ void CopyFileLocaleToSMBThread::exec()
     }
     if (!bCreated)
     {
-        qDebug() << m_strSmbFile << "file cannot create,"<<fileSmb.errorString();
+        qDebug() << m_strSmbFile << "file cannot create,"<<fileSmb.errorString()<<" id:"<<m_id;
         finish(ERROR_INDUSTRY_FILE_CAN_NOT_OPEN);
         return ;
     }
@@ -550,7 +602,7 @@ void CopyFileLocaleToSMBThread::exec()
         const qint64 iRead = file.read(uptr.get(), 1024);
         if (iRead < 0)
         {
-            qDebug() <<"file cannot read,"<<file.errorString();
+            qDebug() <<"file cannot read,"<<file.errorString()<<" id:"<<m_id;
             finish(ERROR_INDUSTRY_FILE_CAN_NOT_COPY);
             return ;
         }
@@ -564,7 +616,7 @@ void CopyFileLocaleToSMBThread::exec()
             qint64 iWrite = fileSmb.write(uptr.get(), iRead-hasWrite);
             if (iWrite <= 0)
             {
-                qDebug() <<"file cannot read,"<<file.errorString();
+                qDebug() <<fileSmb<<"file cannot write,"<<fileSmb.errorString()<<" id:"<<m_id;
                 finish(ERROR_INDUSTRY_FILE_CAN_NOT_COPY);
                 return ;
             }
@@ -572,4 +624,8 @@ void CopyFileLocaleToSMBThread::exec()
         }
     }while(true);
     finish(NOERROR);
+    qDebug() << "copy file locale to smb ok, id:"<<m_id;
 }
+
+
+

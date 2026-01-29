@@ -39,6 +39,7 @@ public:
 private:
     DPluginInterface *interface = nullptr;
     QTranslator translator;
+    bool m_isChinese = true;
 
 #ifndef __arm__
 public slots:
@@ -47,6 +48,7 @@ public slots:
 
 signals:
     void onMainWidgetClose_signal();
+    void onOpenCreateFileDlgOnMacOSResponse_signal(QJsonObject obj, int errorCode);//NOERROR
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -77,6 +79,7 @@ private:
     QAction *aboutUsAction;
     QAction *exitAction;
 
+    bool m_bMacOSFileDlgOpenning = false;
 
     void _systemTrayInit();
     bool _checkStartAtPowerOn();
@@ -105,6 +108,8 @@ private slots:
     /* Button slot */
     void on_btn_clearbox_clicked();
     void on_checkBox_print_stateChanged(int arg1);
+
+    void slot_openCreateFileDlgOnMacOS(QString strFile, QJsonObject obj);
 #endif
 };
 

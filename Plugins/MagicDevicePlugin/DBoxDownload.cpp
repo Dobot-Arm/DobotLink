@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QProcess>
 #include <QDebug>
+#include <QStorageInfo>
 #ifdef Q_OS_WIN
 #include <fileapi.h>
 #elif defined (Q_OS_MAC)
@@ -155,4 +156,79 @@ void DBoxDownload::run(){
         emit onDownloadFinished_signal(m_handleID, false);
     }
     m_isDownloading = false;
+}
+
+bool DBoxDownload::isCanWriteCode(QString code)
+{
+    QByteArray buffer;
+    {
+        QTextStream out(&buffer);
+        out.setGenerateByteOrderMark(false);
+        out.setCodec("UTF-8");
+        out << code;
+        out.flush();
+    }
+
+    auto allMount = QStorageInfo::mountedVolumes();
+    for (auto m : allMount)
+    {
+        if ((m.name().contains("PYBFLASH") || m.name().contains("NO NAME")) && m.isValid() && m.isReady())
+        {
+            QDir dir(m.rootPath());
+            QFileInfo script(dir.absoluteFilePath("Script"));
+            QFileInfo draw(dir.absoluteFilePath("Draw"));
+            if (script.exists() && script.isDir() && draw.exists() && draw.isDir())
+            {//找到了box
+                const int codeLength = buffer.length()+100;
+                return (m.bytesAvailable() > codeLength)?true:false;
+            }
+        }
+    }
+    return false;
+}
+
+bool DBoxDownload::clearBoxSpace()
+{
+    auto allMount = QStorageInfo::mountedVolumes();
+    for (auto m : allMount)
+    {
+        if ((m.name().contains("PYBFLASH") || m.name().contains("NO NAME")) && m.isValid() && m.isReady())
+        {
+            QDir dir(m.rootPath());
+            QFileInfo script(dir.absoluteFilePath("Script"));
+            QFileInfo draw(dir.absoluteFilePath("Draw"));
+            if (script.exists() && script.isDir() && draw.exists() && draw.isDir())
+            {//找到了box
+                auto allFile = dir.entryInfoList(QDir::Filter::AllEntries | QDir::Filter::NoDotAndDotDot);
+                for (auto file : allFile){
+                    if (file.isDir()){
+                        QString strName = file.fileName();
+                        if (strName.compare("System", Qt::CaseInsensitive)==0){
+                            //不能删除该目录的任何东西
+                        }else if (strName.compare("Script", Qt::CaseInsensitive)==0 ||
+                                  strName.compare("Draw", Qt::CaseInsensitive)==0 ||
+                                  strName.compare("Playback", Qt::CaseInsensitive)==0){
+                            //该目录里面内容清空,但目录保留
+                            QDir subDir(file.absoluteFilePath());
+                            auto tmpSubFile = subDir.entryInfoList(QDir::Filter::AllEntries | QDir::Filter::NoDotAndDotDot);
+                            for (auto tf : tmpSubFile){
+                                if (tf.isDir()){
+                                    QDir(tf.absoluteFilePath()).removeRecursively();
+                                }else if (tf.isFile()){
+                                    QFile::remove(tf.absoluteFilePath());
+                                }
+                            }
+                        }else{
+                            //其他目录删掉
+                            QDir(file.absoluteFilePath()).removeRecursively();
+                        }
+                    }else if(file.isFile()){
+                        QFile::remove(file.absoluteFilePath());
+                    }
+                }
+                return true;
+            }
+        }
+    }
+    return false;
 }

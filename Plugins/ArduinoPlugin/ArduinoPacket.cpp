@@ -17,7 +17,10 @@ bool ArduinoPacket::setPacket(QJsonObject obj)
     }
 
     id = static_cast<quint64>(obj.value("id").toDouble());
-
+    if (obj.contains("originRequestId"))
+    {
+        originRequestId = static_cast<quint64>(obj.value("originRequestId").toDouble());
+    }
     if (obj.contains("method")) {
         QJsonValue value = obj.value("method");
         if (value.isString()) {
@@ -56,10 +59,12 @@ bool ArduinoPacket::setPacket(QJsonObject obj)
     return true;
 }
 
-ArduinoResPacket::ArduinoResPacket(quint64 id, quint16 port) : m_id(id), m_port(port)
+ArduinoResPacket::ArduinoResPacket(quint64 id, quint64 originRequestId, quint16 port)
+    : m_id(id), m_originRequestId(originRequestId), m_port(port)
 {
     resObj.insert("WSport", port);
     resObj.insert("id", static_cast<double>(id));
+    resObj.insert("originRequestId", static_cast<double>(originRequestId));
     resObj.insert("jsonrpc", JsonRPCVersion);
 }
 

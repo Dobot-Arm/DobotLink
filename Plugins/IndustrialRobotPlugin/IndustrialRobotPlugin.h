@@ -13,6 +13,7 @@
 #include "MessageCenter/DPacket.h"
 #include "Device.h"
 
+class QProcess;
 class IndustrialRobotPlugin : public DPluginInterface
 {
     Q_OBJECT
@@ -30,6 +31,11 @@ public:
     static QString GetFirewallInRuleCmdUdp();
     static QString GetFirewallInRuleCmdTcp();
 
+    static bool startVirtualController();
+    static void stopVirtualController();
+    static QString getVirtualControllerRootPath();
+    static bool isVirtualController(const QString& strIp);
+
 private:
     QMap<quint64, DRequestPacket> m_requestPacketMap;
 
@@ -38,6 +44,7 @@ private:
 
     Device *m_device;
 
+    static QProcess* m_pProcVRC;
 
     //wsport就是ws客户端连接的端口，因为这些客户端与dobotlink都是处在同一个电脑上，ip一样的，那么port肯定不一样
     //这样，通过port也能够区分并将消息发给对应的客户端。
@@ -65,3 +72,5 @@ private slots:
 };
 
 #endif // INDUSTRIALROBOTPLUGIN_H
+
+

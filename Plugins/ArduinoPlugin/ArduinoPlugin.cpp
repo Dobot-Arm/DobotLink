@@ -70,6 +70,7 @@ void ArduinoPlugin::pReceiveMassage_slot(QString id, QJsonObject obj)
         if (packet.api == "ArduinoProgram") {
             if (handleProgram(packet) == true) {
                 requestId = packet.id;
+                originRequestId = packet.originRequestId;
                 m_port = packet.port;
                 m_isBusy = true;
                 m_compiler->startCompile();
@@ -80,7 +81,7 @@ void ArduinoPlugin::pReceiveMassage_slot(QString id, QJsonObject obj)
 
 bool ArduinoPlugin::handleProgram(const ArduinoPacket &packet)
 {
-    ArduinoResPacket resPacket(packet.id, m_port);
+    ArduinoResPacket resPacket(packet.id, packet.originRequestId, m_port);
 
     m_serialPort->setPortName(packet.portName);
     if (m_serialPort->open(QIODevice::ReadWrite)) {
@@ -143,7 +144,7 @@ bool ArduinoPlugin::writeIntoCodeFile(QString text)
 {
     if (!codeFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) { 
 
-        ArduinoResPacket resPacket(requestId, m_port);
+        ArduinoResPacket resPacket(requestId, originRequestId, m_port);
         resPacket.setErrorObj(FileOpenFail, "Open code file Failed. filePath:" + codeFile.fileName());
         emit pSendMessage_signal(PluginName, resPacket.getResultObj());
         return false;
@@ -162,7 +163,7 @@ void ArduinoPlugin::handleCompileFinish_slot(int type, QString massage)
     if (type == 0) {
         m_uploader->startUpload();
     } else {
-        ArduinoResPacket resPacket(requestId, m_port);
+        ArduinoResPacket resPacket(requestId, originRequestId, m_port);
         resPacket.setErrorObj(type, massage);
         m_isBusy = false;
         emit pSendMessage_signal(PluginName, resPacket.getResultObj());
@@ -171,7 +172,7 @@ void ArduinoPlugin::handleCompileFinish_slot(int type, QString massage)
 
 void ArduinoPlugin::handleUploadFinish_slot(int type, QString massage)
 {
-    ArduinoResPacket resPacket(requestId, m_port);
+    ArduinoResPacket resPacket(requestId, originRequestId, m_port);
 
     if (type == 0) {
         resPacket.setResultObj();
@@ -201,7 +202,7 @@ void ArduinoPlugin::handleProcessPercent_slot(int percent, QString message)
     processObj.insert("progress", percent);
     processObj.insert("message", message);
 
-    ArduinoResPacket resPacket(requestId, m_port);
+    ArduinoResPacket resPacket(requestId, originRequestId, m_port);
     resPacket.setResultObj(processObj);
 
     emit pSendMessage_signal(PluginName, resPacket.getResultObj());

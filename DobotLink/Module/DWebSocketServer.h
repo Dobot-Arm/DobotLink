@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QAtomicInteger>
 #include <QPair>
+#include <QTimer>
 
 class QWebSocket;
 class QWebSocketServer;
@@ -38,6 +39,15 @@ private:
     bool ExchangeJsonrpcId(QString& strMsg, qint64& srcId, qint64 replaceId);
     qint64 GetJsonrpcId(QString strMsg);
 
+    /*有一种情况，就是某个插件（ArduinoPlugin），收到一次请求时，
+     * 竟然会回复多条消息，而且还要求这多条消息的id与请求时一致，否则前端无法继续。
+     * 真是见鬼了，这种神奇的操作。
+     *
+     * 将jsonrpc请求时的原始id也添加到结构中。
+     */
+    void InsertOriginJsonrpcId(QString& strJsonRpc, qint64 originRequestId);
+    void RevertOriginJsonrpc(QString& strJsonRpc);
+
     static QAtomicInteger<qint64> m_seqId;
 
     QWebSocketServer *m_WebSocketServer;
@@ -49,6 +59,7 @@ private:
     QSet<QWebSocket*> m_allClient;
 
     quint16 CLIENT_PORT;
+    QTimer* m_pTimer;
 
 private slots:
 //![WebSocketServer]

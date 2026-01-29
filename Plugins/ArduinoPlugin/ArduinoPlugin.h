@@ -37,6 +37,7 @@ public:
 
 private:
     quint64 requestId;
+    quint64 originRequestId;
     quint16 m_port;
     bool m_isBusy;
     QFile codeFile;

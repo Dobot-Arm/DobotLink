@@ -185,11 +185,13 @@ public:
     explicit ReadFolderThread(
             const quint64 id,
             const QString &folderName,
+            bool bIsOnlyFolder,
             QObject *parent = nullptr);
     ~ReadFolderThread() {}
     void exec();
 private:
     QString m_folderName;
+    bool m_bIsOnlyFolder;
 };
 
 /* 复制文件夹 */

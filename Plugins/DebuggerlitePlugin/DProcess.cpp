@@ -90,7 +90,7 @@ void DProcess::slotProcFinish(int code, QProcess::ExitStatus status)
         m_stdoutDatas = QJsonArray();
     }
 
-    QString msg = QString("Proccess[%1, %2] stoped.\r\n").arg(m_dpid).arg(m_pid);
+    QString msg = QString("Process[%1, %2] stopped.\r\n").arg(m_dpid).arg(m_pid);
     qDebug().noquote() << msg;
 
     QJsonArray msgObjs;
@@ -111,9 +111,10 @@ bool DProcess::prepare(const QString &b64Script, const QString &portName, const 
     QString script =  QString(QByteArray::fromBase64(base64Bytes));
 
     QString strOldPath = QDir::currentPath();
-    QDir::setCurrent(qApp->applicationDirPath());
+    QDir::setCurrent(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
     qDebug().noquote() << __FUNCTION__ << "temp file location:" << QDir::currentPath();
     if (!m_tempFile->open())  {
+        QDir::setCurrent(strOldPath);
         qDebug() << __FUNCTION__ << m_tempFile->error() << m_tempFile->errorString();
         return false;
     }
@@ -177,7 +178,7 @@ bool DProcess::start()
     bool isSuccess = m_proc->waitForStarted(1000);
     if (isSuccess) {
         m_pid = m_proc->processId();
-        QString msg = QString("Script running on proccess[%1, %2]...").arg(m_dpid).arg(m_proc->processId());
+        QString msg = QString("Script running on process[%1, %2]...").arg(m_dpid).arg(m_proc->processId());
         qDebug().noquote() << msg;
 
         QJsonArray msgObjs;

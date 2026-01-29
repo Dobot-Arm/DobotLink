@@ -11,6 +11,8 @@
 #include <QTextCodec>
 #include <QDebug>
 int const static DAYS_CLEANLOGS = -15;
+static constexpr int LOG_FILE_MAX_SIZE = 100*1024*1024; //100MB
+
 DLogger *DLogger::getInstance()
 {
     static DLogger *instance = nullptr;
@@ -57,7 +59,7 @@ DLogger::DLogger(QObject *parent) : QObject(parent)
     if (m_logPath.cd("DobotLink")) {
         QString dataTime = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
         QString fileName = QString("DL_%1.log").arg(dataTime);
-        logFile->setFileName(m_logPath.absoluteFilePath(fileName));
+        logFile->setFileName(m_logPath.absoluteFilePath("DL_debug.log"));
     }
 }
 
@@ -129,12 +131,42 @@ void DLogger::startLogging()
         m_isLogging = true;
         qDebug() << "Start logging at path:" << logFile->fileName();
         qInstallMessageHandler(myMessageOutput);
-    } else if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+    } else if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
         m_isLogging = true;
         qDebug() << "Start logging at path:" << logFile->fileName();
+        if (m_tmPreFileTime.isNull() || !m_tmPreFileTime.isValid())
+        {//第一次开始记录，则用当前时间当做文件名，待到分割时用这个时间
+            m_tmPreFileTime = QDateTime::currentDateTime();
+        }
         qInstallMessageHandler(myMessageOutput);
     } else {
         qWarning() << "Open log File Failed:" << logFile->fileName();
+    }
+}
+
+bool DLogger::isNextDay() const
+{
+    QDate now = QDateTime::currentDateTime().date();
+    QDate t = m_tmPreFileTime.date();
+    return t!=now;
+}
+
+void DLogger::createNewFileMaybe()
+{
+    if (logFile->pos() >= LOG_FILE_MAX_SIZE || isNextDay())
+    {
+        QString strOldFile = logFile->fileName();
+        logFile->close();
+        QString strNewFile = QString("DL_%1.log").arg(m_tmPreFileTime.toString("yyyyMMdd_HHmmss"));
+        strNewFile = m_logPath.absoluteFilePath(strNewFile);
+        QFile::rename(strOldFile, strNewFile);
+
+        logFile->setFileName(strOldFile);
+
+        if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+        {
+            m_tmPreFileTime = QDateTime::currentDateTime();
+        }
     }
 }
 
@@ -209,6 +241,7 @@ void myMessageOutput(QtMsgType type, const QMessageLogContext &context, const QS
 
     textStream << messageText.toUtf8();
     logger->logFile->flush();
+    logger->createNewFileMaybe();
 }
 
 #if 0

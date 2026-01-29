@@ -18,6 +18,9 @@ const QString MagicDevicePlugin::Version = "3.2.4";
 #ifndef __wasm__
 const QByteArray BroadCastMessage = "WhoisDobotM1";
 const quint16 BroadCastPort = 6000;
+
+const QByteArray BROADCAST_KEYWORD = "Who is Dobot?";
+const int BROADCAST_PORT  = 48899;
 #endif
 
 #ifndef __wasm__
@@ -26,6 +29,9 @@ MagicDevicePlugin::MagicDevicePlugin(QObject *parent) : DPluginInterface(parent)
     m_udpSocket = new QUdpSocket();//临时方案：不挂父对象，解决有时候退出进程时崩溃问题
     connect(m_udpSocket, &QUdpSocket::readyRead,
             this, &MagicDevicePlugin::_onUdpReadyRead_slot);
+    m_udpSocketUSR = new QUdpSocket();
+    connect(m_udpSocketUSR, &QUdpSocket::readyRead,
+            this, &MagicDevicePlugin::onUdpUSRReadyRead_slot);
 #else
 MagicDevicePlugin::MagicDevicePlugin() : QObject(nullptr)
 {
@@ -114,6 +120,10 @@ void MagicDevicePlugin::_handleMagicDeviceCommand(const QJsonObject &obj)
                         pDisconnectDobot(device, packet);
                     } else if (packet.api == "DownloadProgram") {
                         _handleDownloadCmd(device, packet);
+                    } else if (packet.api == "CheckBoxSpace") {
+                        _handleCheckBoxSpaceCmd(device, packet);
+                    } else if (packet.api == "ClearBoxSpace") {
+                        _handleClearBoxSpaceCmd(device, packet);
                     } else if (packet.api == "QueuedCmdStop") {
                         _pQueuedCmdStop(device, packet);
                     } else if (packet.api == "SetCommuTimeout") {
@@ -606,6 +616,34 @@ void MagicDevicePlugin::_handleDownloadCmd(MagicDevice *device, const DRequestPa
     thread->start();
 }
 
+/* 检查box剩余空间是否够创建一个脚本文件 */
+void MagicDevicePlugin::_handleCheckBoxSpaceCmd(MagicDevice *device, const DRequestPacket &packet)
+{
+    Q_UNUSED(device)
+    m_requestPacketMap.remove(packet.id);
+    DResultPacket resPacket(packet);
+    QString code;
+    if (packet.paramsObj.contains("code")) {
+        QString base64Code = packet.paramsObj.value("code").toString();
+        QByteArray base64Bytes = base64Code.toUtf8();
+        code = QString(QByteArray::fromBase64(base64Bytes));
+    }else{
+        emit pSendMessage_signal(PluginName, resPacket.getErrorObjWithCode(ERROR_INVALID_PARAMS));
+    }
+    bool bCan = DBoxDownload::isCanWriteCode(code);
+    emit pSendMessage_signal(PluginName, resPacket.getResultObj(bCan));
+}
+
+/* 清空box的空间内存 */
+void MagicDevicePlugin::_handleClearBoxSpaceCmd(MagicDevice *device, const DRequestPacket &packet)
+{
+    Q_UNUSED(device)
+    bool bVal = DBoxDownload::clearBoxSpace();
+    m_requestPacketMap.remove(packet.id);
+    DResultPacket resPacket(packet);
+    emit pSendMessage_signal(PluginName, resPacket.getResultObj(bVal));
+}
+
 /* 接收 Device 消息 */
 void MagicDevicePlugin::_handleReceiveMessage_slot(quint64 id, QString cmd, int res, QJsonValue params)
 {
@@ -662,6 +700,44 @@ void MagicDevicePlugin::_onUdpReadyRead_slot()
                 m_m1deviceMap.insert(deviceIp, deviceName);
                 qDebug() << "[UDP BroadCast]find a M1 Device, ip:" << deviceIp << "name:" << deviceName;
             }
+        }
+    }
+#endif
+}
+
+void MagicDevicePlugin::onUdpUSRReadyRead_slot()
+{
+#ifndef __wasm__
+    while (m_udpSocketUSR->hasPendingDatagrams()) {
+        QNetworkDatagram datagram = m_udpSocketUSR->receiveDatagram();
+        QString strContent = datagram.data();
+        //strContent=192.168.137.128,D8B04CB33868,USR-C322,2.17.14
+        qDebug() << "[UDP USR BroadCast]get reply:" << strContent;
+
+        QString deviceIp;
+        QString deviceName;
+        QStringList lstItem = strContent.split(',');
+        if (lstItem.size()>0)
+        {
+            QString str = lstItem.at(0);
+            QRegExp reg("^((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)$");
+            if (!str.isEmpty() && reg.exactMatch(str))
+            {
+                deviceIp = str;
+            }
+        }
+        if (lstItem.size()>1)
+        {
+            deviceName += lstItem.at(1);
+        }
+        if (lstItem.size()>2)
+        {
+            deviceName += lstItem.at(2);
+        }
+        if (!deviceIp.isEmpty())
+        {
+            m_m1deviceMap.insert(deviceIp, deviceName);
+            qDebug() << "[UDP USR BroadCast]find a Magician Device, ip:" << deviceIp << "name:" << deviceName;
         }
     }
 #endif
@@ -732,12 +808,20 @@ void MagicDevicePlugin::_sendErrorMessage(const DRequestPacket &request, const E
 void MagicDevicePlugin::_broadcastForSearchM1()
 {
 #ifndef __wasm__
-    foreach (QString ip, _getHostIpList()) {
+    QStringList allIp = _getHostIpList();
+    foreach (QString ip, allIp) {
         QString boradcastIP = m_ipAndBroadcastMap.value(ip);
         qDebug() << "[Info] localIP:" << ip << ", broadcastIP:" << boradcastIP;
         m_udpSocket->writeDatagram(BroadCastMessage, QHostAddress(boradcastIP), BroadCastPort);
     }
 
+    foreach (QString ip, allIp) {
+        QString boradcastIP = m_ipAndBroadcastMap.value(ip);
+        qDebug() << "[Info-USR] localIP:" << ip << ", broadcastIP:" << boradcastIP;
+        m_udpSocketUSR->writeDatagram(BROADCAST_KEYWORD, QHostAddress(boradcastIP), BROADCAST_PORT);
+    }
+
+    m_searchTimer->setInterval(2000);
     m_searchTimer->start();
 #endif
 }

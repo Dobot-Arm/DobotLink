@@ -124,10 +124,15 @@ void PyImageOMPlugin::setLog_dir()
     if (!logDir.exists("DobotLink")) {
         logDir.mkdir("DobotLink");
     }
+    QStringList param;
     if (logDir.cd("DobotLink")) {
         QString log_path = logDir.absolutePath();
-        QStringList param;
         param<<"--log_dir"<<log_path<<"--log_level"<<"debug";
-        m_process->setArguments(param);
     }
+#ifdef Q_OS_WIN
+    param<<"--link_pid"<<QString::number(QCoreApplication::applicationPid());
+#elif defined (Q_OS_MAC)
+    param<<"--link_pid"<<QString::number(QCoreApplication::applicationPid());
+#endif
+    m_process->setArguments(param);
 }

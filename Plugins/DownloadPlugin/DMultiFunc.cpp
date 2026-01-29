@@ -6,7 +6,7 @@
 const QString processName = "MultiFuncTool.exe";
 DMultiFunc::DMultiFunc(QObject *parent) : QObject(parent)
 {
-
+    m_process = nullptr;
 }
 
 DMultiFunc::~DMultiFunc()
@@ -106,9 +106,9 @@ void DMultiFunc::startDownload(QString COM, QString version, quint64 start_id)
 
     QStringList arguments;
 #ifdef Q_OS_WIN
-    arguments << m_fileName << COM << version;
+    arguments << m_fileName << COM << version << QString::number(QCoreApplication::applicationPid());
 #elif defined (Q_OS_MAC)
-    arguments << m_fileName << COM << version;
+    arguments << m_fileName << COM << version << QString::number(QCoreApplication::applicationPid());
 #endif
 
     m_process->setArguments(arguments);

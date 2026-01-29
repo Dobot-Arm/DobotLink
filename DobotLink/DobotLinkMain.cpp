@@ -28,6 +28,11 @@
 #include "Views/DRemoteMonitorForm.h"
 #include "Views/DUpgradeDialog.h"
 #endif
+#include <QFileDialog>
+#include <QStorageInfo>
+#include <QScopeGuard>
+#include <thread>
+#include <chrono>
 
 const QString VERSION(VERSION_MAIN);
 const QString MACHINE_REG_RUN("HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
@@ -90,11 +95,6 @@ DobotLinkMain(QWidget *parent)
     m_upgradeDialog = new DUpgradeDialog(this);
     connect(m_upgradeDialog, &DUpgradeDialog::closeApp_signal,
             this, &DobotLinkMain::exitApp_slot);
-
-    /* log init */
-    DLogger *logger = DLogger::getInstance();
-    connect(logger, &DLogger::logMessage_signal,
-            this, &DobotLinkMain::handleShowLogMsg_slot);
 #endif
 
 //! [user init here]
@@ -123,6 +123,9 @@ DobotLinkMain(QWidget *parent)
 #endif
     msgCenter->loadDefaultPlugin();
 
+    connect(msgCenter, &DMessageCenter::signal_openCreateFileDlgOnMacOS, this, &DobotLinkMain::slot_openCreateFileDlgOnMacOS);
+    connect(this, &DobotLinkMain::onOpenCreateFileDlgOnMacOSResponse_signal, msgCenter, &DMessageCenter::slot_onOpenCreateFileDlgOnMacOSResponse);
+
 #ifdef __arm__
     bool isLogging = DSettings::getInstance()->getIsLogging();
     if (isLogging) {
@@ -132,6 +135,9 @@ DobotLinkMain(QWidget *parent)
 
     // 调用定期清理日志接口
     DLogger::getInstance()->timecleanLogs();
+
+    QLocale locale;
+    m_isChinese = QLocale::Chinese==locale.language();
 }
 
 DobotLinkMain::~DobotLinkMain()
@@ -153,13 +159,15 @@ void DobotLinkMain::SwitchLanguage_slot(QString language)
     if (language == "en") {
         if (translator.load(":/dobotlink_en.qm")) {
             bool res = qApp->installTranslator(&translator);
-            qDebug() << "qApp->installTranslator(en) true";
+            m_isChinese = false;
+            qDebug() << "qApp->installTranslator(en) true:"<<res;
         } else {
             qDebug() << "translator.load(en) false";
         }
     } else if (language == "ch") {
         if (translator.load(":/dobotlink.qm")) {
             bool res = qApp->installTranslator(&translator);
+            m_isChinese = true;
             qDebug() << "qApp->installTranslator(ch)" << res;
         } else {
             qDebug() << "translator.load(ch) false";
@@ -222,11 +230,15 @@ void DobotLinkMain::_systemTrayInit()
         DLogger::getInstance()->startLogging();
     }
 
+    /* log init */
+    DLogger *logger = DLogger::getInstance();
     bool isPrintable = DSettings::getInstance()->getIsPrintable();
     if (isPrintable) {
         ui->checkBox_print->setChecked(true);
+        connect(logger, &DLogger::logMessage_signal,this, &DobotLinkMain::handleShowLogMsg_slot);
     } else {
         ui->checkBox_print->setChecked(false);
+        disconnect(logger, &DLogger::logMessage_signal,this, &DobotLinkMain::handleShowLogMsg_slot);
     }
 
 #ifdef Q_OS_WIN
@@ -456,7 +468,10 @@ void DobotLinkMain::helpActionOnAct_slot()
 {
 //    DOpenFile::getInstance()->openFileWithVSCode("protocolMenu.md");
 #ifdef Q_OS_WIN
-    DOpenFile::getInstance()->openFileWithDesktopServices("DobotlinkHelp.CHM");
+    if (m_isChinese)
+        DOpenFile::getInstance()->openFileWithDesktopServices("DobotlinkHelp.CHM");
+    else
+        DOpenFile::getInstance()->openFileWithDesktopServices("DobotLinkHelp_EN.CHM");
 #else
     DOpenFile::getInstance()->openFileWithDesktopServices("index.htm");
 #endif
@@ -489,10 +504,17 @@ void DobotLinkMain::exitApp_slot()
         action->setEnabled(false);
     }
 
+    DMessageCenter::killAllSubProcess();
     qDebug() << "DobotLinkMain closing...";
     QTimer::singleShot(200, qApp, SLOT(quit()));
 
-    DMessageCenter::getInstance()->onClose_slot();
+    std::thread thd([]{
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        abort();
+    });
+    thd.detach();
+
+    emit DMessageCenter::getInstance()->signalClose();
 }
 
 /* click top menu slot */
@@ -576,11 +598,11 @@ void DobotLinkMain::onMenuTriggered_slot(QAction *action)
 #endif
         QStringList argument = QCoreApplication::arguments();
         if(argument.count()==2){
-            DMessageCenter::getInstance()->loadPlugin("CodingAgentPlugin");
+            emit DMessageCenter::getInstance()->signal_loadPlugin("CodingAgentPlugin");
         }
         if (!pluginName.isEmpty()) {
             if (action->isChecked()) {
-                DMessageCenter::getInstance()->loadPlugin(pluginName);
+                emit DMessageCenter::getInstance()->signal_loadPlugin(pluginName);
             } else {
                 QMessageBox msgBox;
                 msgBox.setText(tr("Unload the plugin?"));
@@ -596,7 +618,7 @@ void DobotLinkMain::onMenuTriggered_slot(QAction *action)
                 msgBox.setDefaultButton(QMessageBox::Cancel);
                 int ret = msgBox.exec();
                 if (ret == QMessageBox::Ok) {
-                    DMessageCenter::getInstance()->unloadPlugin(pluginName);
+                    emit DMessageCenter::getInstance()->signal_unloadPlugin(pluginName);
                 } else {
                     action->setChecked(true);
                 }
@@ -653,6 +675,16 @@ void DobotLinkMain::handleShowLogMsg_slot(QString message)
     ui->plainTextEdit_Monitor->appendPlainText(message);
     QScrollBar *scrollBar = ui->plainTextEdit_Monitor->verticalScrollBar();
     scrollBar->setValue(scrollBar->maximum());
+
+    QTextDocument* pDoc = ui->plainTextEdit_Monitor->document();
+    if (pDoc){
+        if (pDoc->characterCount()>1e6 || pDoc->lineCount()>300){
+            ui->plainTextEdit_Monitor->clear();
+        }
+    }else{
+        ui->plainTextEdit_Monitor->setDocument(new QTextDocument());
+    }
+
 }
 
 void DobotLinkMain::on_btn_clearbox_clicked()
@@ -662,10 +694,91 @@ void DobotLinkMain::on_btn_clearbox_clicked()
 
 void DobotLinkMain::on_checkBox_print_stateChanged(int arg1)
 {
+    DLogger *logger = DLogger::getInstance();
     if (arg1 == Qt::Checked) {
         DSettings::getInstance()->setIsPrintable(true);
+        connect(logger, &DLogger::logMessage_signal,this, &DobotLinkMain::handleShowLogMsg_slot);
     } else if (arg1 == Qt::Unchecked) {
         DSettings::getInstance()->setIsPrintable(false);
+        disconnect(logger, &DLogger::logMessage_signal,this, &DobotLinkMain::handleShowLogMsg_slot);
     }
 }
+
+void DobotLinkMain::slot_openCreateFileDlgOnMacOS(QString strFile, QJsonObject obj)
+{
+    if (m_bMacOSFileDlgOpenning){
+        qDebug()<<"you should not do it again when the filedialog is openning........";
+        emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, ERROR_DL_API_BUSY);
+        return;
+    }
+    m_bMacOSFileDlgOpenning = true;
+    qScopeGuard([this]{
+        m_bMacOSFileDlgOpenning = false;
+    });
+    QStorageInfo si;
+    auto allMount = QStorageInfo::mountedVolumes();
+    for (auto m : allMount)
+    {
+        if ((m.name().contains("PYBFLASH") || m.name().contains("NO NAME")) && m.isValid() && m.isReady())
+        {
+            QDir dir(m.rootPath());
+            QFileInfo script(dir.absoluteFilePath("Script"));
+            QFileInfo draw(dir.absoluteFilePath("Draw"));
+            if (script.exists() && script.isDir() && draw.exists() && draw.isDir())
+            {//找到了box
+                si = m;
+                break;
+            }
+        }
+    }
+    if (!si.isValid() || !si.isReady()){
+        qDebug()<<"it has not found any magic box storage.......";
+        emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, ERROR_DEVICE_NOT_FOUND);
+        return;
+    }
+    QFileInfo selFile(QDir(si.rootPath()).absoluteFilePath(strFile));
+    QString strSuffix = selFile.suffix();
+    if (strSuffix.isEmpty()){
+        strSuffix = "All Files (*.*)";
+    }else{
+        strSuffix = QString("Files (*.%1)").arg(strSuffix);
+    }
+    QString strDownloadFile = QFileDialog::getSaveFileName(nullptr, "Download File", selFile.absoluteFilePath(),strSuffix);
+    if (strDownloadFile.isEmpty()){
+        qDebug()<<"you may be cancel download file........";
+        emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, ERROR_DEVICE_ACTION_CANCELED);
+        return;
+    }
+    QFile file(strDownloadFile);
+    if (file.open(QFile::Truncate|QFile::ReadWrite)){
+        qDebug()<<"set permission:"<<file.setPermissions(QFileDevice::ReadOwner|QFileDevice::WriteOwner);
+        DRequestPacket packet;
+        packet.setPacketFromObj(obj);
+
+        bool bOk = true;
+        QTextStream out(&file);
+        out.setGenerateByteOrderMark(false);
+        out.setCodec("UTF-8");
+        if (packet.paramsObj.contains("code")) {
+            QString base64Code = packet.paramsObj.value("code").toString();
+            QByteArray base64Bytes = base64Code.toUtf8();
+            out << QString(QByteArray::fromBase64(base64Bytes));
+            out.flush();
+            if (out.status()==QTextStream::WriteFailed){
+                bOk = false;
+                qDebug()<<"write file fail,may be the memory space not enough.......";
+            }
+        }
+        file.close();
+        if (bOk)
+            emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, NOERROR);
+        else
+            emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, ERROR_DOWNLOAD_FIRMWARE);
+    }else{
+        qDebug()<<"open and create file error:"<<file.errorString()<<","<<strDownloadFile;
+        emit onOpenCreateFileDlgOnMacOSResponse_signal(obj, ERROR_DOWNLOAD_FIRMWARE);
+        return;
+    }
+}
+
 #endif

@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include "FileControll.h"
 #include "FileControllSmb.h"
+#include "FileControllVirtual.h"
 #define USE_MOBDEBUG
 
 #ifdef USE_MOBDEBUG
@@ -44,6 +45,7 @@ private:
     void pSendPostCmd(quint64 id, QJsonObject params);
     void pSendGetCmd(quint64 id, QJsonObject params);
     void pReadFile(quint64 id, QJsonObject params);
+    void pReadFileString(quint64 id, QJsonObject params);
     void pWriteFile(quint64 id, QJsonObject params);
     void pNewFile(quint64 id, QJsonObject params);
     void pNewFolder(quint64 id, QJsonObject params);
@@ -311,6 +313,8 @@ private:
     void pSetFunctionPostureCalc(quint64 id, QJsonObject params);
     void pSetTruemotion(quint64 id, QJsonObject params);
     void pGetTruemotion(quint64 id, QJsonObject params);
+    void pSetTruemotionWithHttp(quint64 id, QJsonObject params);
+    void pGetTruemotionWithHttp(quint64 id, QJsonObject params);
     void pSetPallet(quint64 id, QJsonObject params);
     void pGetPallet(quint64 id, QJsonObject params);
     void pGetFunctionScriptParams(quint64 id, QJsonObject params);
@@ -408,6 +412,14 @@ private:
     void pGetCCBoxVoltage(quint64 id, QJsonObject params);
     void pSetCCBoxVoltage(quint64 id, QJsonObject params);
 
+    //IO模式：（小型控制柜特有功能，控制柜IO的配置）
+    void pGetWorkModeDI(quint64 id, QJsonObject params);
+    void pSetWorkModeDI(quint64 id, QJsonObject params);
+    void pGetWorkModeDO(quint64 id, QJsonObject params);
+    void pSetWorkModeDO(quint64 id, QJsonObject params);
+
+    void pStartAutoIdentify(quint64 id, QJsonObject params);
+
 signals:
     void onReplyMessage_signal(quint64 id, QJsonValue value = QJsonValue());
     void onNotifyMessage_signal(quint64 id, QJsonObject obj = QJsonObject());
@@ -420,6 +432,7 @@ private:
     FileControll *m_fileControll;//the default object is FileControllSmb
     FileControll *m_pFileCtrl;//the real object
     FileControllSmb *m_pFileCtrlSmb;//the real object
+    FileControllVirtual *m_pFileCtrlVirtual;//the real object
     static QMap<QString, //portName
                 int //SMBType
                 > m_portFCSmb;
@@ -468,3 +481,6 @@ private slots:
 };
 
 #endif // DEVICE_H
+
+
+

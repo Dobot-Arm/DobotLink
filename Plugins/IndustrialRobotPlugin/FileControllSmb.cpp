@@ -8,6 +8,8 @@
 #include <QDebug>
 #include <QtConcurrent>
 
+static const int SMBV2_TIMEOUT_SECONDS=5;
+
 FileControllSmb::FileControllSmb(const QString &ip, QObject *parent):
     FileControll(ip,parent)
 {
@@ -25,20 +27,24 @@ void FileControllSmb::setIpAddress(const QString &ip)
 {
     if (ip != getIpAddress())
     {
-        m_smbClient->Disconnect();
         m_ip = ip;
+        m_pool->Clear(this);
+        m_smbClient->Disconnect();
     }
 }
 
 void FileControllSmb::readFile(const quint64 id, const QString &fileName, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -50,13 +56,14 @@ void FileControllSmb::readFile(const quint64 id, const QString &fileName, quint3
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string& strJson){
             QByteArray array;
             for(char ch : data)
             {
                 array.append(ch);
             }
-            emit onFinish_signal(id, code, array, QJsonValue());
+            QJsonDocument doc = QJsonDocument::fromJson(QByteArray(strJson.c_str()));
+            emit onFinish_signal(id, code, array, doc.object());
         };
         smb.exec();
     });
@@ -65,12 +72,15 @@ void FileControllSmb::readFile(const quint64 id, const QString &fileName, quint3
 void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     QJsonDocument doc;
     if (value.isObject()) {
@@ -97,7 +107,7 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetContent(data);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -108,12 +118,15 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
 void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     QByteArray arr = content.toUtf8();
     std::vector<char> data;
@@ -134,7 +147,7 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetContent(data);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -145,12 +158,15 @@ void FileControllSmb::writeFile(const quint64 id, const QString &fileName, const
 void FileControllSmb::changeFile(const quint64 id, const QString &fileName, const QString &key, const QJsonValue &value, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -163,9 +179,10 @@ void FileControllSmb::changeFile(const quint64 id, const QString &fileName, cons
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetNewContent(key.toStdString(), value);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
-            Q_UNUSED(data);
-            emit onFinish_signal(id, code, QByteArray(), QJsonValue());
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
+            QByteArray arr(data.data(),data.size());
+            QJsonDocument doc = QJsonDocument::fromJson(arr);
+            emit onFinish_signal(id, code, QByteArray(), doc.object());
         };
         smb.exec();
     });
@@ -175,12 +192,15 @@ void FileControllSmb::changeFile(const quint64 id, const QString &fileName, cons
 void FileControllSmb::newFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     QJsonDocument doc;
     if (value.isObject()) {
@@ -207,7 +227,7 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetContent(data);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -218,12 +238,15 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
 void FileControllSmb::newFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     QByteArray arr = content.toUtf8();
     std::vector<char> data;
@@ -244,7 +267,7 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetContent(data);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -255,12 +278,15 @@ void FileControllSmb::newFile(const quint64 id, const QString &fileName, const Q
 void FileControllSmb::decodeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = fileName.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = fileName.mid(iPos+m_strShareDir.size());
     else strRealFilePath = fileName;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -273,7 +299,7 @@ void FileControllSmb::decodeFile(const quint64 id, const QString &fileName, cons
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetContent(content.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -284,7 +310,7 @@ void FileControllSmb::decodeFile(const quint64 id, const QString &fileName, cons
 void FileControllSmb::newFolder(const quint64 id, const QString &url, const QString &folderName, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strPath = url+'/'+folderName;
     strPath.replace('\\','/');
@@ -302,6 +328,9 @@ void FileControllSmb::newFolder(const quint64 id, const QString &url, const QStr
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = strPath.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strPath;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -313,7 +342,7 @@ void FileControllSmb::newFolder(const quint64 id, const QString &url, const QStr
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -324,7 +353,7 @@ void FileControllSmb::newFolder(const quint64 id, const QString &url, const QStr
 void FileControllSmb::newFolderRecursive(const quint64 id, const QString &strSubDirRelative, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strPath = strSubDirRelative;
     strPath.replace('\\','/');
@@ -338,6 +367,9 @@ void FileControllSmb::newFolderRecursive(const quint64 id, const QString &strSub
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = strPath.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strPath;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -349,7 +381,7 @@ void FileControllSmb::newFolderRecursive(const quint64 id, const QString &strSub
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -360,7 +392,7 @@ void FileControllSmb::newFolderRecursive(const quint64 id, const QString &strSub
 void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, const QString &newfolderName, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strOldPath = folderName;
     strOldPath.replace('\\','/');
@@ -371,6 +403,9 @@ void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, 
     }
     int iPos = strOldPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strOldPath = strOldPath.mid(iPos+m_strShareDir.size());
+    if (strOldPath.startsWith('\\') || strOldPath.startsWith('/')) {
+        strOldPath.remove(0,1);
+    }
 
     QString strNewPath = newfolderName;
     strNewPath.replace('\\','/');
@@ -381,6 +416,9 @@ void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, 
     }
     iPos = strNewPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strNewPath = strNewPath.mid(iPos+m_strShareDir.size());
+    if (strNewPath.startsWith('\\') || strNewPath.startsWith('/')) {
+        strNewPath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -393,7 +431,7 @@ void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, 
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strOldPath.toStdString());
         smb.SetNewNamePath(strNewPath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -404,7 +442,7 @@ void FileControllSmb::renameFolder(const quint64 id, const QString &folderName, 
 void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QString &folderName, const QString &newfolderName, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strOldPath = url+'/'+folderName;
     strOldPath.replace('\\','/');
@@ -415,6 +453,9 @@ void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QSt
     }
     int iPos = strOldPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strOldPath = strOldPath.mid(iPos+m_strShareDir.size());
+    if (strOldPath.startsWith('\\') || strOldPath.startsWith('/')) {
+        strOldPath.remove(0,1);
+    }
 
     QString strNewPath = url+'/'+newfolderName;
     strNewPath.replace('\\','/');
@@ -425,6 +466,9 @@ void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QSt
     }
     iPos = strNewPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strNewPath = strNewPath.mid(iPos+m_strShareDir.size());
+    if (strNewPath.startsWith('\\') || strNewPath.startsWith('/')) {
+        strNewPath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -437,7 +481,7 @@ void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QSt
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strOldPath.toStdString());
         smb.SetNewPath(strNewPath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -448,7 +492,7 @@ void FileControllSmb::copyFolder(const quint64 id, const QString &url, const QSt
 void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const QString &folderName, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strPath = url+'/'+folderName;
     strPath.replace('\\','/');
@@ -459,6 +503,9 @@ void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const Q
     }
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
+    if (strPath.startsWith('\\') || strPath.startsWith('/')) {
+        strPath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -470,7 +517,7 @@ void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const Q
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strPath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -478,7 +525,7 @@ void FileControllSmb::deleteFolder(const quint64 id, const QString &url, const Q
     });
 }
 
-void FileControllSmb::readFolder(const quint64 id, const QString &folderName, quint32 timeout)
+void FileControllSmb::readFolder(const quint64 id, const QString &folderName, quint32 timeout,bool bIsOnlyFolder)
 {
     QJsonObject result;
 
@@ -509,7 +556,17 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName, qu
             for (int i=0; i<fileInfo.count(); i++) {
                 name = fileInfo.at(i).fileName();
                 time = fileInfo.at(i).lastModified();
-                result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                if (bIsOnlyFolder)
+                {
+                    if (fileInfo.at(i).isDir())
+                    {
+                        result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                    }
+                }
+                else
+                {
+                    result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                }
             }
             if (fileInfo.count()>=2){
                 result.remove(".");
@@ -521,7 +578,7 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName, qu
     else
     {
         timeout = timeout/1000;
-        timeout = timeout ? timeout : 2;
+        timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
         QString strPath = folderName;
         strPath.replace('\\','/');
@@ -532,6 +589,9 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName, qu
         }
         int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
         if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
+        if (strPath.startsWith('\\') || strPath.startsWith('/')) {
+            strPath.remove(0,1);
+        }
 
         m_pool->start(this,[=](bool isCanceled){
             if (isCanceled) return ;
@@ -543,13 +603,15 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName, qu
             smb.SetPassword(m_strPwd);
             smb.SetTimeoutSeconds(timeout);
             smb.SetPath(strPath.toStdString());
-            smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+            smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
                 Q_UNUSED(data);
                 emit onFinish_signal(id, code, QByteArray(), QJsonValue());
             };
-            smb.OnFinishedResult = [this](uint64_t id, const std::list<
+            smb.OnFinishedResult = [this,bIsOnlyFolder](uint64_t id, const std::list<
                                                                     std::tuple<std::string,//filename
-                                                                                uint64_t>//lastmodifytime
+                                                                                uint64_t,//lastmodifytime
+                                                                                bool//isFile
+                                                                                >
                                                                     >& fileList){
                 QJsonObject result;
                 QString name;
@@ -558,7 +620,17 @@ void FileControllSmb::readFolder(const quint64 id, const QString &folderName, qu
                 {
                     name = QString(std::get<0>(v).c_str());
                     time = QDateTime::fromMSecsSinceEpoch(std::get<1>(v));
-                    result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                    if (bIsOnlyFolder)
+                    {
+                        if (!std::get<2>(v))
+                        {
+                            result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                        }
+                    }
+                    else
+                    {
+                        result.insert(name, time.toString("yyyy-MM-dd hh:mm:ss"));
+                    }
                 }
                 emit onFinish_signal(id, NOERROR, QByteArray(), QJsonValue(result));
             };
@@ -571,7 +643,7 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
                          const QStringList& lstFileNameFilter, int iDeepth, quint32 nTimeoutMillseconds)
 {
     int timeout = nTimeoutMillseconds/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     std::vector<std::string> vcFilter;
     foreach(QString str, lstFileNameFilter)
@@ -588,6 +660,9 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
     }
     int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
+    if (strPath.startsWith('\\') || strPath.startsWith('/')) {
+        strPath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -601,7 +676,7 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
         smb.SetPath(strPath.toStdString());
         smb.SetDeepth(iDeepth);
         smb.SetFileFilter(vcFilter);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -620,7 +695,7 @@ void FileControllSmb::getFullFileNameList(const quint64 id, const QString& strDi
 void FileControllSmb::DeleteFileName(const quint64 id, const QStringList& delFiles,quint32 nTimeoutMillseconds)
 {
     int timeout = nTimeoutMillseconds/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     std::vector<std::string> vcFile;
     vcFile.reserve(delFiles.size());
@@ -634,6 +709,9 @@ void FileControllSmb::DeleteFileName(const quint64 id, const QStringList& delFil
         }
         int iPos = strPath.indexOf(QString(m_strShareDir.c_str()));
         if (iPos>=0) strPath = strPath.mid(iPos+m_strShareDir.size());
+        if (strPath.startsWith('\\') || strPath.startsWith('/')) {
+            strPath.remove(0,1);
+        }
 
         vcFile.push_back(strPath.toStdString());
     }
@@ -648,7 +726,7 @@ void FileControllSmb::DeleteFileName(const quint64 id, const QStringList& delFil
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetDeleteFiles(vcFile);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
@@ -659,12 +737,15 @@ void FileControllSmb::DeleteFileName(const quint64 id, const QStringList& delFil
 void FileControllSmb::pathIsExist(const quint64 id, const QString &path, quint32 timeout)
 {
     timeout = timeout/1000;
-    timeout = timeout ? timeout : 2;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = path.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = path.mid(iPos+m_strShareDir.size());
     else strRealFilePath = path;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -676,14 +757,15 @@ void FileControllSmb::pathIsExist(const quint64 id, const QString &path, quint32
         smb.SetPassword(m_strPwd);
         smb.SetTimeoutSeconds(timeout);
         smb.SetPath(strRealFilePath.toStdString());
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
-        smb.OnFinishedResult = [this](uint64_t id, bool isExist,bool isFile){
+        smb.OnFinishedResult = [this](uint64_t id, bool isExist,bool isFile, int64_t nFileSize){
             QJsonObject obj;
             obj.insert("exist",isExist);
             obj.insert("isFile",isFile);
+            obj.insert("fileSize",nFileSize);
             emit onFinish_signal(id, NOERROR, QByteArray(), obj);
         };
         smb.exec();
@@ -708,11 +790,16 @@ void FileControllSmb::copyFileFromLocaleToSmb(const quint64 id, const QString& s
             timeout = 30000;
         }
     }
+    timeout = timeout/1000;
+    timeout = timeout ? timeout : SMBV2_TIMEOUT_SECONDS;
 
     QString strRealFilePath;
     int iPos = strSmbFile.indexOf(QString(m_strShareDir.c_str()));
     if (iPos>=0) strRealFilePath = strSmbFile.mid(iPos+m_strShareDir.size());
     else strRealFilePath = strSmbFile;
+    if (strRealFilePath.startsWith('\\') || strRealFilePath.startsWith('/')) {
+        strRealFilePath.remove(0,1);
+    }
 
     m_pool->start(this,[=](bool isCanceled){
         if (isCanceled) return ;
@@ -726,13 +813,12 @@ void FileControllSmb::copyFileFromLocaleToSmb(const quint64 id, const QString& s
         smb.SetPath(strRealFilePath.toStdString());
         smb.SetLocalFile(strLocaleFile.toStdString());
         smb.SetTruncate(bIsTruncate);
-        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data){
+        smb.OnFinished = [this](uint64_t id, int code, const std::vector<char>& data, const std::string&){
             Q_UNUSED(data);
             emit onFinish_signal(id, code, QByteArray(), QJsonValue());
         };
         smb.exec();
     });
 }
-
 
 

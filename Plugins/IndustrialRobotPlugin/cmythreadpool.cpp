@@ -65,6 +65,7 @@ public:
 CMyThreadPool::CMyThreadPool(size_t nMaxThreadSize)
 {
     m_iMaxThreadCount = nMaxThreadSize;
+    m_iIdleCount = 0;
     m_threads.reserve(m_iMaxThreadCount*2);
     Start(1);
 }

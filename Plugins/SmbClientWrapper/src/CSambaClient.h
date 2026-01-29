@@ -44,6 +44,9 @@ public:
     void Disconnect();
     bool IsConnected();
 
+    int GetMaxReadSize();
+    int GetMaxWriteSize();
+
 private:
     std::recursive_mutex m_mtx;
     void* m_pSmbCtx; //struct smb2_context*

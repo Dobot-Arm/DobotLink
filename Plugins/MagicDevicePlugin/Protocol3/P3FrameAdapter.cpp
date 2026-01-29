@@ -41,7 +41,7 @@ P3FrameAdapter::P3FrameAdapter(QObject *parent):
     m_timerCNT->setInterval(10);
     connect(m_timerCNT, &QTimer::timeout, this, &P3FrameAdapter::cntTimeout_slot);
 
-    DobotV3_SetSendParm(3, 500);
+    DobotV3_SetSendParm(3, 4000);
     m_linkPath = DobotV3_RegisterLink(sendData, readData);
 }
 

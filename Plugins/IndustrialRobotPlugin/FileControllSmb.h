@@ -21,7 +21,7 @@ public:
     void setIpAddress(const QString &ip) Q_DECL_OVERRIDE;
     /* file */
     void readFile(const quint64 id, const QString &fileName, quint32 timeout=0) Q_DECL_OVERRIDE;
-    void readFolder(const quint64 id, const QString &folderName, quint32 timeout=0) Q_DECL_OVERRIDE;
+    void readFolder(const quint64 id, const QString &folderName, quint32 timeout=0,bool bIsOnlyFolder=false) Q_DECL_OVERRIDE;
     void writeFile(const quint64 id, const QString &fileName, const QJsonValue &value, quint32 timeout=0) Q_DECL_OVERRIDE;
     void writeFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0) Q_DECL_OVERRIDE;
     void newFile(const quint64 id, const QString &fileName, const QString &content, quint32 timeout=0) Q_DECL_OVERRIDE;

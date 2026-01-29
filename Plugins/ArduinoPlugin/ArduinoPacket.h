@@ -16,6 +16,7 @@ public:
     QString method;
     QString target;
     QString api;
+    quint64 originRequestId;
 
     QJsonObject paramsObj;
     QString type;
@@ -28,7 +29,7 @@ public:
 class ArduinoResPacket
 {
 public:
-    ArduinoResPacket(quint64 id = 0, quint16 port = 0);
+    ArduinoResPacket(quint64 id = 0, quint64 originRequestId = 0, quint16 port = 0);
 
 public:
     QJsonObject resObj;
@@ -45,6 +46,7 @@ private:
 
 private:
     quint64 m_id;
+    quint64 m_originRequestId;
     quint16 m_port;
 };
 

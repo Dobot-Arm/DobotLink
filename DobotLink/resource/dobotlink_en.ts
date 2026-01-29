@@ -1164,114 +1164,114 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="176"/>
-        <location filename="../DobotLinkMain.cpp" line="194"/>
-        <source>manager interface</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../DobotLinkMain.cpp" line="177"/>
-        <location filename="../DobotLinkMain.cpp" line="195"/>
-        <source>main interface</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../DobotLinkMain.cpp" line="178"/>
-        <location filename="../DobotLinkMain.cpp" line="196"/>
-        <source>Show on top</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../DobotLinkMain.cpp" line="179"/>
-        <location filename="../DobotLinkMain.cpp" line="197"/>
-        <source>Log</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../DobotLinkMain.cpp" line="180"/>
-        <location filename="../DobotLinkMain.cpp" line="198"/>
-        <source>Start Log</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../DobotLinkMain.cpp" line="181"/>
         <location filename="../DobotLinkMain.cpp" line="199"/>
-        <source>Open Log File</source>
+        <source>manager interface</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="182"/>
         <location filename="../DobotLinkMain.cpp" line="200"/>
-        <source>delete log</source>
+        <source>main interface</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="183"/>
         <location filename="../DobotLinkMain.cpp" line="201"/>
-        <source>Start With System</source>
+        <source>Show on top</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="184"/>
         <location filename="../DobotLinkMain.cpp" line="202"/>
-        <source>Help</source>
+        <source>Log</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="185"/>
         <location filename="../DobotLinkMain.cpp" line="203"/>
-        <source>check upgrade</source>
+        <source>Start Log</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="186"/>
         <location filename="../DobotLinkMain.cpp" line="204"/>
-        <source>About us</source>
+        <source>Open Log File</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../DobotLinkMain.cpp" line="187"/>
         <location filename="../DobotLinkMain.cpp" line="205"/>
+        <source>delete log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../DobotLinkMain.cpp" line="188"/>
+        <location filename="../DobotLinkMain.cpp" line="206"/>
+        <source>Start With System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../DobotLinkMain.cpp" line="189"/>
+        <location filename="../DobotLinkMain.cpp" line="207"/>
+        <source>Help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../DobotLinkMain.cpp" line="190"/>
+        <location filename="../DobotLinkMain.cpp" line="208"/>
+        <source>check upgrade</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../DobotLinkMain.cpp" line="191"/>
+        <location filename="../DobotLinkMain.cpp" line="209"/>
+        <source>About us</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../DobotLinkMain.cpp" line="192"/>
+        <location filename="../DobotLinkMain.cpp" line="210"/>
         <source>Exit</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="278"/>
+        <location filename="../DobotLinkMain.cpp" line="283"/>
         <source>DobotLink is Running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="312"/>
+        <location filename="../DobotLinkMain.cpp" line="317"/>
         <source>started DLMaintenance.exe program.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="327"/>
+        <location filename="../DobotLinkMain.cpp" line="332"/>
         <source>open show-on-top</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="332"/>
+        <location filename="../DobotLinkMain.cpp" line="337"/>
         <source>close show-on-top</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="366"/>
+        <location filename="../DobotLinkMain.cpp" line="371"/>
         <source>Delete all log files?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="586"/>
+        <location filename="../DobotLinkMain.cpp" line="595"/>
         <source>Unload the plugin?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="588"/>
+        <location filename="../DobotLinkMain.cpp" line="597"/>
         <source>if you unload this plugin, you will not control Magician,MagicianLite,MagicBox,M1 etc.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="592"/>
+        <location filename="../DobotLinkMain.cpp" line="601"/>
         <source>choose ok to unload. choose cancel to return.</source>
         <translation type="unfinished"></translation>
     </message>

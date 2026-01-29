@@ -22,7 +22,8 @@
 class MsgQueueFullException : public std::logic_error
 {
 public:
-    MsgQueueFullException() : std::logic_error("queue is full")
+    MsgQueueFullException(const char* pFile=__FILE__,const int iLine=__LINE__)
+        : std::logic_error(std::string(pFile)+","+std::to_string(iLine)+" queue is full")
     {
     }
 };
@@ -30,7 +31,8 @@ public:
 class MsgQueueDestroyException : public std::logic_error
 {
 public:
-    MsgQueueDestroyException() : std::logic_error("queue is empty")
+    MsgQueueDestroyException(const char* pFile=__FILE__,const int iLine=__LINE__)
+        : std::logic_error(std::string(pFile)+","+std::to_string(iLine)+" queue is empty")
     {
     }
 };

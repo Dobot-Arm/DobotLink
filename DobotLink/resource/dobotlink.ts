@@ -1264,77 +1264,77 @@
         <translation>串口调试助手</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="178"/>
-        <location filename="../DobotLinkMain.cpp" line="196"/>
+        <location filename="../DobotLinkMain.cpp" line="183"/>
+        <location filename="../DobotLinkMain.cpp" line="201"/>
         <source>Show on top</source>
         <translation>总在最前</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="179"/>
-        <location filename="../DobotLinkMain.cpp" line="197"/>
+        <location filename="../DobotLinkMain.cpp" line="184"/>
+        <location filename="../DobotLinkMain.cpp" line="202"/>
         <source>Log</source>
         <translation>日志</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="180"/>
-        <location filename="../DobotLinkMain.cpp" line="198"/>
+        <location filename="../DobotLinkMain.cpp" line="185"/>
+        <location filename="../DobotLinkMain.cpp" line="203"/>
         <source>Start Log</source>
         <translation>开始记录</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="181"/>
-        <location filename="../DobotLinkMain.cpp" line="199"/>
+        <location filename="../DobotLinkMain.cpp" line="186"/>
+        <location filename="../DobotLinkMain.cpp" line="204"/>
         <source>Open Log File</source>
         <translation>打开日志</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="182"/>
-        <location filename="../DobotLinkMain.cpp" line="200"/>
+        <location filename="../DobotLinkMain.cpp" line="187"/>
+        <location filename="../DobotLinkMain.cpp" line="205"/>
         <source>delete log</source>
         <translation>删除日志</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="366"/>
+        <location filename="../DobotLinkMain.cpp" line="371"/>
         <source>Delete all log files?</source>
         <translation>删除所有日志?</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="183"/>
-        <location filename="../DobotLinkMain.cpp" line="201"/>
+        <location filename="../DobotLinkMain.cpp" line="188"/>
+        <location filename="../DobotLinkMain.cpp" line="206"/>
         <source>Start With System</source>
         <translation>开机启动</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="184"/>
-        <location filename="../DobotLinkMain.cpp" line="202"/>
+        <location filename="../DobotLinkMain.cpp" line="189"/>
+        <location filename="../DobotLinkMain.cpp" line="207"/>
         <source>Help</source>
         <translation>帮助</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="185"/>
-        <location filename="../DobotLinkMain.cpp" line="203"/>
+        <location filename="../DobotLinkMain.cpp" line="190"/>
+        <location filename="../DobotLinkMain.cpp" line="208"/>
         <source>check upgrade</source>
         <translation>检查更新</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="186"/>
-        <location filename="../DobotLinkMain.cpp" line="204"/>
+        <location filename="../DobotLinkMain.cpp" line="191"/>
+        <location filename="../DobotLinkMain.cpp" line="209"/>
         <source>About us</source>
         <translation>关于我们</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="187"/>
-        <location filename="../DobotLinkMain.cpp" line="205"/>
+        <location filename="../DobotLinkMain.cpp" line="192"/>
+        <location filename="../DobotLinkMain.cpp" line="210"/>
         <source>Exit</source>
         <translation>退出</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="278"/>
+        <location filename="../DobotLinkMain.cpp" line="283"/>
         <source>DobotLink is Running.</source>
         <translation>DobotLink 正在运行。</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="312"/>
+        <location filename="../DobotLinkMain.cpp" line="317"/>
         <source>started DLMaintenance.exe program.</source>
         <translation>启动插件维护程序。</translation>
     </message>
@@ -1343,39 +1343,39 @@
         <translation type="vanished">已启动插件维护程序。</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="327"/>
+        <location filename="../DobotLinkMain.cpp" line="332"/>
         <source>open show-on-top</source>
         <translation>打开页面置顶</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="332"/>
+        <location filename="../DobotLinkMain.cpp" line="337"/>
         <source>close show-on-top</source>
         <translation>关闭页面置顶</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="176"/>
-        <location filename="../DobotLinkMain.cpp" line="194"/>
+        <location filename="../DobotLinkMain.cpp" line="181"/>
+        <location filename="../DobotLinkMain.cpp" line="199"/>
         <source>manager interface</source>
         <translation>开发者界面</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="177"/>
-        <location filename="../DobotLinkMain.cpp" line="195"/>
+        <location filename="../DobotLinkMain.cpp" line="182"/>
+        <location filename="../DobotLinkMain.cpp" line="200"/>
         <source>main interface</source>
         <translation>主界面</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="586"/>
+        <location filename="../DobotLinkMain.cpp" line="595"/>
         <source>Unload the plugin?</source>
         <translation>卸载此插件？</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="588"/>
+        <location filename="../DobotLinkMain.cpp" line="597"/>
         <source>if you unload this plugin, you will not control Magician,MagicianLite,MagicBox,M1 etc.</source>
         <translation>如果您卸载此插件，将无法控制Magican，MagicianLite，MagicBox，M1设备。</translation>
     </message>
     <message>
-        <location filename="../DobotLinkMain.cpp" line="592"/>
+        <location filename="../DobotLinkMain.cpp" line="601"/>
         <source>choose ok to unload. choose cancel to return.</source>
         <translation>选择ok卸载，选择取消返回。</translation>
     </message>

@@ -7,6 +7,8 @@
 #include <QSettings>
 #include <QJsonObject>
 #include "IndustrialRobotPlugin.h"
+#include <QLibrary>
+#include <QMutex>
 const QString BASE_PORT = "22000";
 #ifndef Q_OS_ANDROID
 const QString DefaultIPAddress = "192.168.1.6";
@@ -67,6 +69,7 @@ Device::Device(QObject *parent) : QObject(parent)
 
     m_pFileCtrl = new FileControll("", this);
     m_pFileCtrlSmb = new FileControllSmb("", this);
+    m_pFileCtrlVirtual = new FileControllVirtual("", this);
     m_fileControll = m_pFileCtrlSmb;
 }
 
@@ -110,6 +113,7 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
 
         qDebug() << errCode << errStr;
         emit onReplyMessage_signal(id, false);
+        m_requestMap.remove(id);
     });
 
     QObject* pRecv = new QObject();
@@ -125,21 +129,23 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
         //执行完毕后，释放对象以及所有信号槽，防止重复接收
         pRecv->deleteLater();
 
+        m_requestMap.remove(id);
+
         // 回包有问题
         QJsonObject obj = value.toObject();
         if (!obj.contains("value") ||
             obj.value("value").toString() != "connected") {
             m_module->setIpAddress("");
-            emit onErrorOccured_signal(id, ERROR_DEVICE_LOST_CONNECTION);
+            //emit onErrorOccured_signal(id, ERROR_DEVICE_LOST_CONNECTION);
+            emit onReplyMessage_signal(id, value);
             return;
         }
 
+        int iErrCode = NOERROR;
 #ifdef USE_MOBDEBUG
         // 绑定端口
         if (!m_modebug->udpOpen(portName)) {
-            m_module->setIpAddress("");
-            emit onErrorOccured_signal(id, ERROR_MOBDEBUG_UDP_BIND_FAILED);
-            return;
+            iErrCode = ERROR_MOBDEBUG_UDP_BIND_FAILED;
         }
 #endif
 
@@ -170,14 +176,33 @@ void Device::pConnectDobot(quint64 id, QJsonObject params)
             {
                 m_fileControll = m_pFileCtrl;
             }
-            m_pFileCtrl->setIpAddress(strPortNameTmp);
-            m_pFileCtrlSmb->setIpAddress(strPortNameTmp);
+            if (IndustrialRobotPlugin::isVirtualController(strPortNameTmp))
+            {//本地虚拟控制器
+                m_fileControll = m_pFileCtrlVirtual;
+                m_pFileCtrlVirtual->setIpAddress(IndustrialRobotPlugin::getVirtualControllerRootPath());
+            }
+            else
+            {
+                m_pFileCtrl->setIpAddress(strPortNameTmp);
+                m_pFileCtrlSmb->setIpAddress(strPortNameTmp);
+            }
         }
 
+        obj.insert("code", iErrCode);
         m_isConnected = true;
-        emit onReplyMessage_signal(id, true);
+        emit onReplyMessage_signal(id, obj);
     });
 
+    if (IndustrialRobotPlugin::isVirtualController(m_module->ip()))
+    {//本地虚拟控制器
+        if (!IndustrialRobotPlugin::startVirtualController())
+        {
+            qDebug()<<"start virtual controller fail!";
+            emit onReplyMessage_signal(id, false);
+            m_requestMap.remove(id);
+            return ;
+        }
+    }
     m_module->sendGetRequest("/connection/state", id, "ConnectDobot");
 }
 
@@ -190,10 +215,17 @@ void Device::pDisconnectDobot(quint64 id, QJsonObject params)
         return;
     }
 
+    QString portName = params.value("portName").toString();
+
     m_module->setIpAddress("");
     m_fileControll->setIpAddress("");
     m_pFileCtrl->setIpAddress("");
     m_pFileCtrlSmb->setIpAddress("");
+    m_pFileCtrlVirtual->setIpAddress("");
+    if (IndustrialRobotPlugin::isVirtualController(portName))
+    {
+        IndustrialRobotPlugin::stopVirtualController();
+    }
 
 #ifdef USE_MOBDEBUG
     m_modebug->udpClose();
@@ -251,6 +283,7 @@ void Device::_apiFunctionInit()
     m_FuncMap.insert("SendPostCmd", &Device::pSendPostCmd);
     m_FuncMap.insert("SendGetCmd", &Device::pSendGetCmd);
     m_FuncMap.insert("ReadFile", &Device::pReadFile);
+    m_FuncMap.insert("ReadFileString", &Device::pReadFileString);
     m_FuncMap.insert("ReadFolder", &Device::pReadFolder);
     m_FuncMap.insert("WriteFile", &Device::pWriteFile);
     m_FuncMap.insert("NewFile", &Device::pNewFile);
@@ -517,6 +550,8 @@ void Device::_apiFunctionInit()
     m_FuncMap.insert("SetFunctionPostureCalc", &Device::pSetFunctionPostureCalc);
     m_FuncMap.insert("SetTruemotion", &Device::pSetTruemotion);
     m_FuncMap.insert("GetTruemotion", &Device::pGetTruemotion);
+    m_FuncMap.insert("SetTruemotionWithHttp", &Device::pSetTruemotionWithHttp);
+    m_FuncMap.insert("GetTruemotionWithHttp", &Device::pGetTruemotionWithHttp);
     m_FuncMap.insert("SetPallet", &Device::pSetPallet);
     m_FuncMap.insert("GetPallet", &Device::pGetPallet);
     m_FuncMap.insert("GetFunctionScriptParams", &Device::pGetFunctionScriptParams);
@@ -593,6 +628,13 @@ void Device::_apiFunctionInit()
     m_FuncMap.insert("GetCabinetType", &Device::pGetCabinetType);
     m_FuncMap.insert("GetCCBoxVoltage", &Device::pGetCCBoxVoltage);
     m_FuncMap.insert("SetCCBoxVoltage", &Device::pSetCCBoxVoltage);
+
+    m_FuncMap.insert("GetWorkModeDI", &Device::pGetWorkModeDI);
+    m_FuncMap.insert("SetWorkModeDI", &Device::pSetWorkModeDI);
+    m_FuncMap.insert("GetWorkModeDO", &Device::pGetWorkModeDO);
+    m_FuncMap.insert("SetWorkModeDO", &Device::pSetWorkModeDO);
+
+    m_FuncMap.insert("StartAutoIdentify", &Device::pStartAutoIdentify);
 }
 
 void Device::_selfExchangeFunMapInit()
@@ -664,10 +706,11 @@ void Device::pReadFile(quint64 id, QJsonObject params)
     checkStringValue(params, "fileName");
 
     QString fileName = params.value("fileName").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
+    bool bIsFileAttr = params.value("fileAttr").toBool(false);
     QObject *obj = new QObject(this);
-    m_fileControll->readFile(id, fileName);
-    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data){
+    m_fileControll->readFile(id, fileName,timeout);
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsv){
         if (id != c_id) {
             return ;
         } else {
@@ -675,17 +718,69 @@ void Device::pReadFile(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                QString str(data);
-                if (!value.isNull()){
-                    //说明是json文件
-                    emit onReplyMessage_signal(id, value);
-                } else {
-                    emit onReplyMessage_signal(id, str);
+                if (bIsFileAttr)
+                {
+                    if (!value.isNull()){
+                        //说明是json文件
+                        QJsonObject jsObject;
+                        jsObject.insert("fileData", value);
+                        jsObject.insert("fileInfo",jsv);
+                        emit onReplyMessage_signal(id, jsObject);
+                    } else {
+                        QString str(data);
+                        QJsonObject jsObject;
+                        jsObject.insert("fileData", str);
+                        jsObject.insert("fileInfo",jsv);
+                        emit onReplyMessage_signal(id, jsObject);
+                    }
+                }
+                else
+                {
+                    if (!value.isNull()){
+                        //说明是json文件
+                        emit onReplyMessage_signal(id, value);
+                    } else {
+                        QString str(data);
+                        emit onReplyMessage_signal(id, str);
+                    }
                 }
             } else {
                 qDebug() << "read file failed.";
                 emit onErrorOccured_signal(id, code);
             }
+        }
+    });
+}
+
+void Device::pReadFileString(quint64 id, QJsonObject params)
+{
+    checkStringValue(params, "fileName");
+
+    QString fileName = params.value("fileName").toString();
+    quint32 timeout = params.value("timeout").toInt(0);
+    bool bIsFileAttr = params.value("fileAttr").toBool(false);
+    QObject *obj = new QObject(this);
+    m_fileControll->readFile(id, fileName,timeout);
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsv){
+        if (id != c_id) return ;
+        obj->deleteLater();
+        m_requestMap.remove(id);
+        if (code == NOERROR) {
+            QString str(data);
+            if (bIsFileAttr)
+            {
+                QJsonObject jsObject;
+                jsObject.insert("fileData", str);
+                jsObject.insert("fileInfo",jsv);
+                emit onReplyMessage_signal(id, jsObject);
+            }
+            else
+            {
+                emit onReplyMessage_signal(id, str);
+            }
+        } else {
+            qDebug() << "read file failed.";
+            emit onErrorOccured_signal(id, code);
         }
     });
 }
@@ -697,10 +792,11 @@ void Device::pWriteFile(quint64 id, QJsonObject params)
 
     QString url = params.value("url").toString();
     QString fileName = params.value("fileName").toString();
+    quint32 timeout = params.value("timeout").toInt(0);
     if (checkObjectValue(params, "content")) {
         QJsonObject contentObj = params.value("content").toObject();
         QObject *obj = new QObject(this);
-        m_fileControll->writeFile(id, fileName, contentObj);
+        m_fileControll->writeFile(id, fileName, contentObj,timeout);
         connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
             if (id != c_id) {
                 return ;
@@ -718,7 +814,7 @@ void Device::pWriteFile(quint64 id, QJsonObject params)
     } else if (checkStringValue(params, "content")) {
         QString contentValue = params.value("content").toString();
         QObject *obj = new QObject(this);
-        m_fileControll->writeFile(id, fileName, contentValue);
+        m_fileControll->writeFile(id, fileName, contentValue,timeout);
         connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
             if (id != c_id) {
                 return ;
@@ -732,6 +828,10 @@ void Device::pWriteFile(quint64 id, QJsonObject params)
                 }
             }
         });
+    }
+    else
+    {
+        emit onErrorOccured_signal(id, ERROR_INDUSTRY_MISSKEY);
     }
 }
 
@@ -741,10 +841,11 @@ void Device::pNewFile(quint64 id, QJsonObject params)
     checkStringValue(params, "url");
     QString fileName = params.value("fileName").toString();
     QString url = params.value("url").toString();
+    quint32 timeout = params.value("timeout").toInt(0);
     if (checkObjectValue(params, "content")) {
         QJsonObject contentObj = params.value("content").toObject();
         QObject *obj = new QObject(this);
-        m_fileControll->newFile(id, fileName, contentObj);
+        m_fileControll->newFile(id, fileName, contentObj,timeout);
         connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
             if (id != c_id) {
                 return ;
@@ -762,7 +863,7 @@ void Device::pNewFile(quint64 id, QJsonObject params)
     } else if (checkStringValue(params, "content")) {
         QString contentValue = params.value("content").toString();
         QObject *obj = new QObject(this);
-        m_fileControll->newFile(id, fileName, contentValue);
+        m_fileControll->newFile(id, fileName, contentValue,timeout);
         connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
             if (id != c_id) {
                 return ;
@@ -777,6 +878,10 @@ void Device::pNewFile(quint64 id, QJsonObject params)
             }
         });
     }
+    else
+    {
+        emit onErrorOccured_signal(id, ERROR_INDUSTRY_MISSKEY);
+    }
 }
 
 void Device::pDecodeBase64File(quint64 id, QJsonObject params)
@@ -785,10 +890,10 @@ void Device::pDecodeBase64File(quint64 id, QJsonObject params)
     checkObjectValue(params, "content");
     QString fileName = params.value("fileName").toString();
     QString contentValue = params.value("content").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
     QObject *obj = new QObject(this);
 
-    m_fileControll->decodeFile(id, fileName, contentValue);
+    m_fileControll->decodeFile(id, fileName, contentValue,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
         if (id != c_id) {
             return ;
@@ -813,9 +918,9 @@ void Device::pNewFolder(quint64 id, QJsonObject params)
     checkStringValue(params, "url");
     QString folderName = params.value("folderName").toString();
     QString url = params.value("url").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
     QObject *obj = new QObject(this);
-    m_fileControll->newFolder(id, url, folderName);
+    m_fileControll->newFolder(id, url, folderName,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
         if (id != c_id) {
             return ;
@@ -838,9 +943,10 @@ void Device::pReadFolder(quint64 id, QJsonObject params)
     checkStringValue(params, "folderName");
 
     QString folderName = params.value("folderName").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
+    bool bIsOnlyFolder = params.value("onlyFolder").toBool(false);
     QObject *obj = new QObject(this);
-    m_fileControll->readFolder(id, folderName);
+    m_fileControll->readFolder(id, folderName,timeout,bIsOnlyFolder);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue va){
         if (id != c_id) {
             return ;
@@ -870,10 +976,10 @@ void Device::pDeleteFolder(quint64 id, QJsonObject params)
     checkStringValue(params, "folderName");
     QString folderName = params.value("folderName").toString();
     QString url = params.value("url").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
-    m_fileControll->deleteFolder(id, url, folderName);
+    m_fileControll->deleteFolder(id, url, folderName,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
         if (id != c_id) {
             return ;
@@ -896,10 +1002,10 @@ void Device::pRenameFolder(quint64 id, QJsonObject params)
     checkStringValue(params, "folderName");
     QString folderName = params.value("folderName").toString();
     QString newfolderName = params.value("newfolderName").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
-    m_fileControll->renameFolder(id, folderName, newfolderName);
+    m_fileControll->renameFolder(id, folderName, newfolderName,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
         if (id != c_id) {
             return ;
@@ -924,10 +1030,10 @@ void Device::pCopyFolder(quint64 id, QJsonObject params)
     QString url = params.value("url").toString();
     QString folderName = params.value("folderName").toString();
     QString newfolderName = params.value("newfolderName").toString();
-
+    quint32 timeout = params.value("timeout").toInt(0);
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
-    m_fileControll->copyFolder(id, url, folderName, newfolderName);
+    m_fileControll->copyFolder(id, url, folderName, newfolderName,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
         if (id != c_id) {
             return ;
@@ -949,9 +1055,15 @@ void Device::pPathIsExist(quint64 id, QJsonObject params)
     checkStringValue(params, "path");
     QString path = params.value("path").toString();
 
+    if (path.isEmpty())
+    {
+        emit onErrorOccured_signal(id, ERROR_INDUSTRY_MISSKEY);
+        return ;
+    }
     QString ip = params.value("portName").toString();
+    quint32 timeout = params.value("timeout").toInt(0);
     QObject *obj = new QObject(this);
-    m_fileControll->pathIsExist(id, path);
+    m_fileControll->pathIsExist(id, path,timeout);
     connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code,QByteArray array, QJsonValue va){
         Q_UNUSED(array);
         if (id != c_id) {
@@ -976,7 +1088,7 @@ void Device::pCopyFileFromLocaleToSmb(quint64 id, QJsonObject params)
     QString strLocalPath = params.value("localPath").toString();
     QString strSmbPath = params.value("smbPath").toString();
     QString ip = params.value("portName").toString();
-    quint32 timeout = params.value("timeout").toInt(2000);
+    quint32 timeout = params.value("timeout").toInt(20000);
     bool truncate = params.value("truncate").toBool(false);
 
     QObject *obj = new QObject(this);
@@ -1359,7 +1471,8 @@ void Device::pGetCommonSetting(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1406,7 +1519,8 @@ void Device::pGetTeachJoint(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1453,7 +1567,8 @@ void Device::pGetTeachCoordinate(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1498,7 +1613,8 @@ void Device::pGetTeachInch(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1544,7 +1660,8 @@ void Device::pGetPlaybackJoint(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1593,7 +1710,8 @@ void Device::pGetPlaybackCoordinate(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1639,7 +1757,8 @@ void Device::pGetPlaybackArch(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1693,7 +1812,8 @@ void Device::pGetToolCoordinate(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1748,7 +1868,8 @@ void Device::pGetUserCoordinate(quint64 id, QJsonObject params)
             if (code == NOERROR) {
                 if (data.isEmpty())data.append("[]");
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1761,6 +1882,16 @@ void Device::pGetUserCoordinate(quint64 id, QJsonObject params)
 //![5.7.1] 增加示教点文件
 void Device::pSetTeachFileUpdate(quint64 id, QJsonObject params)
 {
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        QJsonObject value;
+        value.insert("status",true);
+        m_requestMap.remove(id);
+        emit onReplyMessage_signal(id, value);
+
+        return ;
+    }
+
     QJsonObject dataObj = params.value("data").toObject();
 
     checkStringValue(dataObj, "file");
@@ -1811,7 +1942,8 @@ void Device::pGetDragSensivity(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -1886,9 +2018,10 @@ void Device::pGetDebuggerState(quint64 id, QJsonObject params)
 void Device::pSetDebuggerStart(quint64 id, QJsonObject params)
 {
     emit onDebuggerNotify_signal("Debugger starting...");
+    const bool bIsVirtual = IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress());
     // 一键运行标志位
     bool isMobdebug = params.value("isMobdebug").toBool();
-    if (isMobdebug) {
+    if (!bIsVirtual && isMobdebug) {
         if (!m_modebug->start(id)) {
             m_requestMap.remove(id);
             emit onErrorOccured_signal(id, ERROR_MOBDEBUG_START_FAILED);
@@ -1904,19 +2037,31 @@ void Device::pSetDebuggerStart(quint64 id, QJsonObject params)
             }
         });
     } else {
-        m_module->sendPostRequest("/debugger/start", params.value("data").toObject(), id, "SetDebuggerStart");
+        QJsonObject objSend = params.value("data").toObject();
+        if (bIsVirtual)
+        {
+            objSend.insert("timeout", 500);
+
+            m_requestMap.remove(id);
+            QJsonObject js;
+            js.insert("status", true);
+            emit onReplyMessage_signal(id, js);
+        }
+        m_module->sendPostRequest("/debugger/start", objSend, id, "SetDebuggerStart");
     }
 }
 
 //![7.3] 停止调试器(stop)
 void Device::pSetDebuggerStop(quint64 id, QJsonObject params)
 {
+    const bool bIsVirtual = IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress());
     bool isMobdebug = params.value("isMobdebug").toBool();
-    if (isMobdebug) {
+    if (!bIsVirtual && isMobdebug) {
         // It will take quite a while to stop the mobdebug process.
         // So, send stop cmd before process stop.
-        m_module->sendPostRequest("/debugger/stop", QJsonObject(), id, "SetPrivateDebuggerStop");
-
+        QJsonObject objSend;
+        if (params.contains("timeout")) objSend.insert("timeout", params["timeout"]);
+        m_module->sendPostRequest("/debugger/stop", objSend, id, "SetPrivateDebuggerStop");
         // todo: bad idea, firmware have a bug.
         QObject *obj = new QObject(this);
         connect(m_module, &Module::onReceiveData_signal, obj, [=](QJsonValue value, QString url, quint64 _id, QString api) {
@@ -1929,22 +2074,41 @@ void Device::pSetDebuggerStop(quint64 id, QJsonObject params)
             }
         });
     } else {
-        m_module->sendPostRequest("/debugger/stop", QJsonObject(), id, "SetDebuggerStop");
-    }
+        QJsonObject objSend;
+        if (bIsVirtual)
+        {
+            objSend.insert("timeout", 500);
 
+            m_requestMap.remove(id);
+            QJsonObject js;
+            js.insert("status", true);
+            emit onReplyMessage_signal(id, js);
+        }
+        m_module->sendPostRequest("/debugger/stop", objSend, id, "SetDebuggerStop");
+    }
 }
 
 //![7.4] 运行(run)
 void Device::pSetDebuggerRun(quint64 id, QJsonObject params)
 {
     emit onDebuggerNotify_signal("Debugger running...");
+    const bool bIsVirtual = IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress());
     bool isMobdebug = params.value("isMobdebug").toBool();
-    if (isMobdebug) {
+    if (!bIsVirtual && isMobdebug) {
         //MD的Run指令要放在HTTP的Run指令之后
         //不然会卡在运动指令之中
         m_module->sendPostRequest("/debugger/run", params, id, "SetDebuggerRun");
         m_modebug->mo_run();
     } else {
+        if (bIsVirtual)
+        {
+            params.insert("timeout", 500);
+
+            m_requestMap.remove(id);
+            QJsonObject js;
+            js.insert("status", true);
+            emit onReplyMessage_signal(id, js);
+        }
         m_module->sendPostRequest("/debugger/run", params, id, "SetDebuggerRun");
     }
 }
@@ -1952,8 +2116,9 @@ void Device::pSetDebuggerRun(quint64 id, QJsonObject params)
 //![7.5] 暂停(suspend)
 void Device::pSetDebuggerSuspend(quint64 id, QJsonObject params)
 {
+    const bool bIsVirtual = IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress());
     bool isMobdebug = params.value("isMobdebug").toBool();
-    if (isMobdebug) {
+    if (!bIsVirtual && isMobdebug) {
         m_modebug->mo_suspend(id);
         QObject *obj = new QObject(this);
         connect(m_modebug, &Mobdebug::onModebugStateChanged_signal, obj, [=](Mobdebug::ModebugState state, quint64 id){
@@ -1966,6 +2131,15 @@ void Device::pSetDebuggerSuspend(quint64 id, QJsonObject params)
         m_module->sendPostRequest("/debugger/suspend", params, id, "SetDebuggerSuspend");
         emit onDebuggerNotify_signal("Script suspended!");
     } else {
+        if (bIsVirtual)
+        {
+            params.insert("timeout", 500);
+
+            m_requestMap.remove(id);
+            QJsonObject js;
+            js.insert("status", true);
+            emit onReplyMessage_signal(id, js);
+        }
         m_module->sendPostRequest("/debugger/suspend", params, id, "SetDebuggerSuspend");
         emit onDebuggerNotify_signal("Script suspended!");
     }
@@ -2089,6 +2263,24 @@ void Device::pSetEmergencyStop(quint64 id, QJsonObject params)
 void Device::pGetEmergencyStop(quint64 id, QJsonObject params)
 {
     Q_UNUSED(params)
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        m_module->sendGetRequest("/panel/emergencyStop", id, "GetEmergencyStop",[=](const QJsonValue&, QString strUrl){
+            m_requestMap.remove(id);
+            Q_UNUSED(strUrl)
+            QJsonObject jso;
+            jso.insert("value",false);
+            emit onReplyMessage_signal(id, jso);
+        },[=](int iErrCode, QString strErrMsg){
+            m_requestMap.remove(id);
+            Q_UNUSED(iErrCode)
+            Q_UNUSED(strErrMsg)
+            QJsonObject jso;
+            jso.insert("value",false);
+            emit onReplyMessage_signal(id, jso);
+        });
+        return ;
+    }
     m_module->sendGetRequest("/panel/emergencyStop", id, "GetEmergencyStop");
 }
 
@@ -2285,7 +2477,8 @@ void Device::pGetGPIOAO(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2331,7 +2524,8 @@ void Device::pGetGPIOAI(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2349,6 +2543,13 @@ void Device::pSetGeneralSafeSetting(quint64 id, QJsonObject params)
 
 void Device::pSetLoadParams(quint64 id, QJsonObject params)
 {
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        m_requestMap.remove(id);
+        emit onReplyMessage_signal(id, true);
+        return ;
+    }
+
     QJsonObject dataObj = params.value("data").toObject();
     checkFloatValue(dataObj, "inertiaX");
     checkFloatValue(dataObj, "inertiaY");
@@ -2377,6 +2578,19 @@ void Device::pSetLoadParams(quint64 id, QJsonObject params)
 void Device::pGetLoadParams(quint64 id, QJsonObject params)
 {
     Q_UNUSED(params)
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        QJsonObject obj;
+        obj.insert("centerX",0.0);
+        obj.insert("centerY",0.0);
+        obj.insert("centerZ",0.0);
+        obj.insert("loadValue",0.0);
+
+        m_requestMap.remove(id);
+        emit onReplyMessage_signal(id, obj);
+
+        return ;
+    }
 
     m_module->sendGetRequest("/settings/function/loadParams", id, "GetLoadParams");
 }
@@ -2399,11 +2613,12 @@ void Device::pSetCollisionDetect(quint64 id, QJsonObject params)
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
     m_fileControll->changeFile(id, "/project/settings/function/collisionDect.json", "value", value);
-    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsonValue){
+        Q_UNUSED(data)
         if(id != c_id) return ;
         if (code == NOERROR) {
             obj->deleteLater();
-            m_module->sendPostRequest("/settings/function/collisionDect", dataObj, id, "SetCollisionDetect");
+            m_module->sendPostRequest("/settings/function/collisionDect", jsonValue, id, "SetCollisionDetect");
         } else {
             m_requestMap.remove(id);
             emit onErrorOccured_signal(id, code);
@@ -2423,13 +2638,14 @@ void Device::pSetCollisionDetectLevel(quint64 id, QJsonObject params)
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
     m_fileControll->changeFile(id, "/project/settings/function/collisionDect.json", "level", level);
-    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsonValue){
+        Q_UNUSED(data)
         if(id != c_id) {
             return ;
         } else {
             obj->deleteLater();
             if (code == NOERROR) {
-                m_module->sendPostRequest("/settings/function/collisionDect", dataObj, id, "SetCollisionDetectLevel");
+                m_module->sendPostRequest("/settings/function/collisionDect", jsonValue, id, "SetCollisionDetectLevel");
             } else {
                 m_requestMap.remove(id);
                 emit onErrorOccured_signal(id, code);
@@ -2449,13 +2665,14 @@ void Device::pSetCollisionDetectResumeType(quint64 id, QJsonObject params)
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
     m_fileControll->changeFile(id, "/project/settings/function/collisionDect.json", "resumeType", resumeType);
-    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsonValue){
+        Q_UNUSED(data)
         if(id != c_id) {
             return ;
         } else {
             obj->deleteLater();
             if (code == NOERROR) {
-                m_module->sendPostRequest("/settings/function/collisionDect", dataObj, id, "SetCollisionDetectResumeType");
+                m_module->sendPostRequest("/settings/function/collisionDect", jsonValue, id, "SetCollisionDetectResumeType");
             } else {
                 m_requestMap.remove(id);
                 emit onErrorOccured_signal(id, code);
@@ -2486,13 +2703,14 @@ void Device::pSetCollisionDetectParam(quint64 id, QJsonObject params)
     QString ip = params.value("portName").toString();
     QObject *obj = new QObject(this);
     m_fileControll->changeFile(id, "/project/settings/function/collisionDect.json", strKey, value);
-    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code){
+    connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data, QJsonValue jsonValue){
+        Q_UNUSED(data)
         if(id != c_id) {
             return ;
         } else {
             obj->deleteLater();
             if (code == NOERROR) {
-                m_module->sendPostRequest("/settings/function/collisionDect", dataObj, id, "SetCollisionParameter");
+                m_module->sendPostRequest("/settings/function/collisionDect", jsonValue, id, "SetCollisionParameter");
             } else {
                 m_requestMap.remove(id);
                 emit onErrorOccured_signal(id, code);
@@ -2516,7 +2734,8 @@ void Device::pGetCollisionDetect(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2783,7 +3002,8 @@ void Device::pGetEndAI(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2905,7 +3125,8 @@ void Device::pGetDriverParam(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2928,7 +3149,8 @@ void Device::pGetAlarmController(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -2953,7 +3175,8 @@ void Device::pGetAlarmServo(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3003,7 +3226,8 @@ void Device::pGetFunctionIoctrl(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3050,7 +3274,8 @@ void Device::pGetModbusctrl(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3117,6 +3342,29 @@ void Device::pAddSearchIP(quint64 id, QJsonObject params)
 void Device::pGetCabinetType(quint64 id, QJsonObject params)
 {
     Q_UNUSED(params)
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        QObject *obj = new QObject(this);
+        m_fileControll->readFile(id, "/project/properties/cabinetType.json");
+        connect(m_fileControll, &FileControll::onFinish_signal, obj, [=](quint64 c_id, int code, QByteArray data){
+            if (id != c_id) {
+                return ;
+            } else {
+                obj->deleteLater();
+                m_requestMap.remove(id);
+
+                if (code == NOERROR) {
+                    QJsonValue value = m_module->parseJsonData(data);
+                    if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                    else emit onReplyMessage_signal(id, value);
+                } else {
+                    emit onErrorOccured_signal(id, code);
+                }
+            }
+        });
+
+        return ;
+    }
     m_module->sendGetRequest("/properties/cabinetType", id, "GetCabinetType");
 }
 
@@ -3130,6 +3378,30 @@ void Device::pSetCCBoxVoltage(quint64 id, QJsonObject params)
 {
     QJsonValue dataObj = params.value("data");
     m_module->sendPostRequest("/settings/function/ccboxVoltage", dataObj, id, "SetCCBoxVoltage");
+}
+
+void Device::pGetWorkModeDI(quint64 id, QJsonObject params)
+{
+    Q_UNUSED(params)
+    m_module->sendGetRequest("/settings/function/workModeDI", id, "GetWorkModeDI");
+}
+
+void Device::pSetWorkModeDI(quint64 id, QJsonObject params)
+{
+    QJsonValue dataObj = params.value("data");
+    m_module->sendPostRequest("/settings/function/workModeDI", dataObj, id, "SetWorkModeDI");
+}
+
+void Device::pGetWorkModeDO(quint64 id, QJsonObject params)
+{
+    Q_UNUSED(params)
+    m_module->sendGetRequest("/settings/function/workModeDO", id, "GetWorkModeDO");
+}
+
+void Device::pSetWorkModeDO(quint64 id, QJsonObject params)
+{
+    QJsonValue dataObj = params.value("data");
+    m_module->sendPostRequest("/settings/function/workModeDO", dataObj, id, "SetWorkModeDO");
 }
 
 void Device::pGetFunctionRemoteControl(quint64 id, QJsonObject params)
@@ -3149,7 +3421,8 @@ void Device::pGetFunctionRemoteControl(quint64 id, QJsonObject params)
 
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3198,7 +3471,8 @@ void Device::pGetUserParam(quint64 id, QJsonObject params)
 
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3253,7 +3527,8 @@ void Device::pGetPropertiesHardwareInfo(quint64 id, QJsonObject params)
 
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3359,12 +3634,26 @@ void Device::pSetTruemotion(quint64 id, QJsonObject params)
             if (code == NOERROR) {
                 if (UsingTrueMotion == true){
                     value = m_module->parseJsonData(data);
+
+                    if (value.isNull()) {
+                        m_requestMap.remove(id);
+                        emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                        return ;
+                    }
+
                     obj = value.toObject();
                     obj["UsingTrueMotion"] = UsingTrueMotion;
                     obj["InputShapingFreq"] = 0;
                     obj["InputShapingDamp"] = 0;
                 } else {
                     value = m_module->parseJsonData(data);
+
+                    if (value.isNull()) {
+                        m_requestMap.remove(id);
+                        emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                        return ;
+                    }
+
                     obj = value.toObject();
                     obj["UsingTrueMotion"] = UsingTrueMotion;
                     obj["InputShapingFreq"] = 5.4348;
@@ -3411,13 +3700,26 @@ void Device::pGetTruemotion(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
         }
 
     });
+}
+
+void Device::pSetTruemotionWithHttp(quint64 id, QJsonObject params)
+{
+    QJsonObject dataObj = params.value("data").toObject();
+    m_module->sendPostRequest("/properties/advancedFunction", dataObj, id, "SetTruemotionWithHttp");
+}
+
+void Device::pGetTruemotionWithHttp(quint64 id, QJsonObject params)
+{
+    Q_UNUSED(params)
+    m_module->sendGetRequest("/properties/advancedFunction", id, "GetTruemotionWithHttp");
 }
 
 void Device::pSetPallet(quint64 id, QJsonObject params)
@@ -3486,7 +3788,8 @@ void Device::pGetPallet(quint64 id, QJsonObject params)
             obj->deleteLater();
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3612,7 +3915,8 @@ void Device::pGetHotkey(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3657,7 +3961,8 @@ void Device::pGetCustomPoint(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3715,7 +4020,8 @@ void Device::pGetPackPoint(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3760,7 +4066,8 @@ void Device::pGetJumpStructure(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3805,7 +4112,8 @@ void Device::pGetSpeedDefault(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -3865,6 +4173,14 @@ void Device::pSetFunctionInstall(quint64 id, QJsonObject params)
         } else {
             obj->deleteLater();
             if (code == NOERROR) {
+                if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+                {
+                    m_requestMap.remove(id);
+                    QJsonObject obj;
+                    obj.insert("status",true);
+                    emit onReplyMessage_signal(id, obj);
+                    return ;
+                }
                 m_module->sendPostRequest("/settings/function/install", dataObj, id, "SetFunctionInstall");
             } else {
                 m_requestMap.remove(id);
@@ -3879,6 +4195,28 @@ void Device::pGetFunctionInstall(quint64 id, QJsonObject params)
 /*
 控制器对这个数据的读写存在不同步，连续下发数据，会出现：下发Post http之后，Get http回来的数据是同步的，但samba中对应的json文件还不同步。
 */
+    if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress()))
+    {
+        QObject *pobj = new QObject(this);
+        m_fileControll->readFile(id, "/project/settings/function/install.json");
+        connect(m_fileControll, &FileControll::onFinish_signal, pobj, [=](quint64 c_id, int code, QByteArray data){
+            if (id != c_id) {
+                return ;
+            } else {
+                pobj->deleteLater();
+                m_requestMap.remove(id);
+                if (code == NOERROR) {
+                    QJsonValue value = m_module->parseJsonData(data);
+                    if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                    else emit onReplyMessage_signal(id, value);
+                } else {
+                    emit onErrorOccured_signal(id, code);
+                }
+            }
+        });
+
+        return ;
+    }
     Q_UNUSED(params)
     m_module->sendGetRequest("/settings/function/install", id, "GetFunctionInstall",[=](const QJsonValue& value, QString strUrl){
         Q_UNUSED(strUrl);
@@ -3897,7 +4235,8 @@ void Device::pGetFunctionInstall(quint64 id, QJsonObject params)
                 m_requestMap.remove(id);
                 if (code == NOERROR) {
                     QJsonValue value = m_module->parseJsonData(data);
-                    emit onReplyMessage_signal(id, value);
+                    if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                    else emit onReplyMessage_signal(id, value);
                 } else {
                     emit onErrorOccured_signal(id, code);
                 }
@@ -4008,7 +4347,8 @@ void Device::pGetRetraceParams(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
@@ -4382,7 +4722,7 @@ bool Device::checkArrayValue(const QJsonObject &obj, const QString &value)
 void Device::onReplyMessage_slot(QJsonValue value, QString url, quint64 id, QString api)
 {
     // todo: bad idea
-    if (api == "SetPrivateDebuggerStop") {
+    if (api == "SetPrivateDebuggerStop" || api == "ConnectDobot") {
         return;
     }
 
@@ -4402,6 +4742,14 @@ void Device::onReplyMessage_slot(QJsonValue value, QString url, quint64 id, QStr
     }
 
     if (isSelfhandle == false && api != "GetPrivateDobotStatus") {
+        if (IndustrialRobotPlugin::isVirtualController(m_module->getIpAddress())
+                && url.contains("/protocol/exchange")
+                && value.isObject())
+        {
+            QJsonObject obj = value.toObject();
+            obj.insert("powerState","on");
+            value = obj;
+        }
         emit onReplyMessage_signal(id, value);
     }
 
@@ -4579,10 +4927,131 @@ void Device::pGetIONote(quint64 id, QJsonObject params)
             m_requestMap.remove(id);
             if (code == NOERROR) {
                 QJsonValue value = m_module->parseJsonData(data);
-                emit onReplyMessage_signal(id, value);
+                if (value.isNull()) emit onErrorOccured_signal(id, ERROR_INDUSTRY_JSONOBJECT);
+                else emit onReplyMessage_signal(id, value);
             } else {
                 emit onErrorOccured_signal(id, code);
             }
         }
     });
 }
+
+static QLibrary g_libPluginAutoIdentify;
+static QMutex g_mtxLibPluginAutoIdentify;
+/*
+logType<0 不打印日志
+logType==0 覆盖打印日志
+logType>0 追加打印日志
+日志默认为：C:\startAutoidentifyLog.log
+*/
+typedef void (*pfn_startAutoidentify)(const char* pszArgPath, const char* pszResultPath, const char* ctrlType, int logType);
+static pfn_startAutoidentify g_pfn_startAutoidentify = nullptr;
+void Device::pStartAutoIdentify(quint64 id, QJsonObject params)
+{
+    QString _argPath = "/project/process/identify/";
+    QString _resultPath = "/project/settings/function/";
+
+    QString strFile1 = QString("%1%2").arg(_argPath).arg("identify1.csv");
+    QString strFile2 = QString("%1%2").arg(_argPath).arg("identify2.csv");
+
+    bool bIsFileExist = false;
+    qint64 nFileSize = 0;
+    {/**********************************************/
+        QEventLoop loop;
+        QTimer timer;
+        timer.setSingleShot(true);
+        QObject *obj = new QObject(this);
+        connect(m_fileControll, &FileControll::onFinish_signal, obj, [id,&loop,&bIsFileExist,&nFileSize](quint64 c_id, int ,QByteArray , QJsonValue va){
+            if (id != c_id) return ;
+            bIsFileExist = va.toObject().value("exist").toBool(false);
+            nFileSize = va.toObject().value("fileSize").toInt(0);
+            loop.quit();
+        });
+        connect(&timer, &QTimer::timeout, obj, [&loop,&bIsFileExist,&nFileSize]{
+            bIsFileExist = false;
+            nFileSize = 0;
+            loop.quit();
+        });
+        m_fileControll->pathIsExist(id, strFile1);
+        timer.start(2000);
+        loop.exec();
+        obj->deleteLater();
+        if (!bIsFileExist || nFileSize<=0){
+            m_requestMap.remove(id);
+            qDebug()<<"file:"<<strFile1<<" may be not found,isExist="<<bIsFileExist<<", or file size is:"<<nFileSize;
+            emit onErrorOccured_signal(id, ERROR_INDUSTRY_FILE_NOT_EXIST);
+            return ;//文件不存在
+        }
+    }
+    {/**********************************************/
+        QEventLoop loop;
+        QTimer timer;
+        timer.setSingleShot(true);
+        QObject *obj = new QObject(this);
+        connect(m_fileControll, &FileControll::onFinish_signal, obj, [id,&loop,&bIsFileExist,&nFileSize](quint64 c_id, int ,QByteArray , QJsonValue va){
+            if (id != c_id) return ;
+            bIsFileExist = va.toObject().value("exist").toBool(false);
+            nFileSize = va.toObject().value("fileSize").toInt(0);
+            loop.quit();
+        });
+        connect(&timer, &QTimer::timeout, obj, [&loop,&bIsFileExist,&nFileSize]{
+            bIsFileExist = false;
+            nFileSize = 0;
+            loop.quit();
+        });
+        m_fileControll->pathIsExist(id, strFile2);
+        timer.start(2000);
+        loop.exec();
+        obj->deleteLater();
+        if (!bIsFileExist || nFileSize<=0){
+            m_requestMap.remove(id);
+            qDebug()<<"file:"<<strFile2<<" may be not found,isExist="<<bIsFileExist<<", or file size is:"<<nFileSize;
+            emit onErrorOccured_signal(id, ERROR_INDUSTRY_FILE_NOT_EXIST);
+            return ;//文件不存在
+        }
+    }
+
+    _argPath = "//"+m_fileControll->getIpAddress()+_argPath;
+    _resultPath = "//"+m_fileControll->getIpAddress()+_resultPath;
+    QString strCtrlTypeName = params.value("data").toObject().value("controllerType").toString();
+    QSet<QString> validCtrlType={"CR","CR3","CR3L","CR5","CR7","CR10","CR12","CR16",
+                                 "Nova 2","Nova 5","NC02","NC02L","NC05","MagicianPro","CR10V2YD"};
+    if (!validCtrlType.contains(strCtrlTypeName))
+    {
+        qDebug()<<"invalid ctrl type:"<<strCtrlTypeName;
+        emit onErrorOccured_signal(id, ERROR_INDUSTRY_AUTO_IDENTIFY_INVALID_TYPE);
+        return ;
+    }
+    QMutexLocker locker(&g_mtxLibPluginAutoIdentify);
+    if (!g_pfn_startAutoidentify)
+    {
+        QString strDll = QCoreApplication::applicationDirPath()+QDir::separator()+QString("PluginAutoIdentify");
+        g_libPluginAutoIdentify.setFileName(strDll);
+        if (!g_libPluginAutoIdentify.isLoaded())
+        {
+            if (!g_libPluginAutoIdentify.load())
+            {
+                qDebug()<<"PluginAutoIdentify load error:"<<g_libPluginAutoIdentify.errorString();
+                emit onErrorOccured_signal(id, ERROR_INDUSTRY_AUTO_IDENTIFY_LOADDLL);
+                return ;
+            }
+        }
+        g_pfn_startAutoidentify = (pfn_startAutoidentify)g_libPluginAutoIdentify.resolve("startAutoidentify");
+    }
+    if (!g_pfn_startAutoidentify)
+    {
+        qDebug()<<"PluginAutoIdentify load error;";
+        emit onErrorOccured_signal(id, ERROR_INDUSTRY_AUTO_IDENTIFY_LOADDLL);
+        return ;
+    }
+    locker.unlock();
+
+    qDebug()<<"strCtrlTypeName:"<<strCtrlTypeName.toStdString().c_str();
+    g_pfn_startAutoidentify(_argPath.toStdString().c_str(), _resultPath.toStdString().c_str(), strCtrlTypeName.toStdString().c_str(),0);
+
+    m_requestMap.remove(id);
+
+    emit onReplyMessage_signal(id, true);
+    return ;
+}
+

@@ -18,8 +18,10 @@
 
 #include "DobotLinkMain.h"
 #include "DelayToQuit/DelayToQuit.h"
+#include "Module/DSettings.h"
+#include "Module/DLogger.h"
 
-#define SINGLEAPPLICATION
+QSharedMemory g_sharedMemoryMain;
 
 int main(int argc, char *argv[])
 {
@@ -53,6 +55,10 @@ int main(int argc, char *argv[])
         qDebug() << "中文系统";
         qmPath = ":/dobotlink.qm";
     }
+    if (DSettings::getInstance()->getIsLogging()) {
+        DLogger::getInstance()->startLogging();
+    }
+    qDebug()<<"app path=====>"<<app.applicationDirPath();
     if (translator.load(qmPath)) {
         bool res = qApp->installTranslator(&translator);
         qDebug() << "app.installTranslator" << res;
@@ -60,16 +66,25 @@ int main(int argc, char *argv[])
         qDebug() << "main translator.load() false";
     }
 
-#ifdef SINGLEAPPLICATION
     /* make sure only one application is running */
-    QSharedMemory shared("DobotLink_Running");
-    if (shared.attach()) {
-        DelayToQuit dQuit;
-        dQuit.start();
-        return app.exec();
+    g_sharedMemoryMain.setKey("DobotLink_Running");    
+    if (!g_sharedMemoryMain.create(1))
+    {
+        qDebug() << "the first time to create shared memory fail:"<<g_sharedMemoryMain.errorString();
+        if (g_sharedMemoryMain.error()==QSharedMemory::AlreadyExists)
+        {
+            g_sharedMemoryMain.attach();
+            g_sharedMemoryMain.detach();
+            if (!g_sharedMemoryMain.create(1))
+            {
+                qDebug() << "the second time to create shared memory fail:"<<g_sharedMemoryMain.errorString();
+                qDebug() << "app start fail,because the app is running!!!!!";
+                DelayToQuit dQuit;
+                dQuit.start();
+                return app.exec();
+            }
+        }
     }
-    shared.create(1);
-#endif 
 
 #endif
     DobotLinkMain mainWindow;
